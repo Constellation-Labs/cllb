@@ -33,31 +33,31 @@ class Manager(init: NonEmptyList[Addr]) {
   private val http = BlazeClientBuilder[IO](global).resource
 
   private lazy val hostsRef =
-    Ref.of[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
+    Ref.of[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem).unsafeRunSync()
 
   def node(addr: Addr) = new RestNodeApi(addr, http)
 
   lazy val lb = new Loadbalancer()
 
-  def updateElbSetup(hosts: Set[Addr]): IO[Unit] =
+  def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
     IO(println(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
       .flatMap(_ => IO.unit)
 
-  def run(): IO[Unit] = hostsRef.map { ref =>
-    println (s"Manager loop ref=$ref")
-    ref.get.map { hosts =>
+  def run(): IO[Unit] =
+    hostsRef.get.flatMap { hosts =>
       println(s"Current hosts setup is=$hosts")
       clusterStatus(hosts.keys)
-        .flatMap {status =>
+        .flatMap { status =>
           val activeHosts = discoverActiveHosts(status)
 
           val clusterHosts = activeHosts.filterNot(addr => status.contains(addr)).foldLeft(status)((acc, addr) =>
             acc.add(addr, Option.empty[List[Info]])
           )
 
-          hostsRef.flatTap(_.set(clusterHosts))
+          println(activeHosts)
+
+          hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
         }
-    }
   }.flatMap(_ => IO.sleep(1 minute).flatMap(_ => run()))
 
   def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): Set[Addr] = {
@@ -73,7 +73,7 @@ class Manager(init: NonEmptyList[Addr]) {
       }.toSet
   }
 
-  def clusterStatus(hosts: NonEmptySet[Addr]) = {
+  def clusterStatus(hosts: NonEmptySet[Addr]):IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
     println(s"Build cluster status on hosts=$hosts")
     hosts.toNonEmptyList
       .map(addr =>
