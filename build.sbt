@@ -39,7 +39,11 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-dsl",
 ).map(_ % http4sVersion)
 
-libraryDependencies += "org.slf4j" % "slf4j-simple" % "1.7.29"
+libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "1.7.29"
+
+fork in run := true
+
+outputStrategy := Some(StdoutOutput)
 
 // enablePlugins(JavaServerAppPackaging)
 enablePlugins(JavaAppPackaging)
