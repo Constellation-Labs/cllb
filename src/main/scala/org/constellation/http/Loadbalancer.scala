@@ -45,16 +45,22 @@ class Loadbalancer(terminator: Signal[IO, Boolean], port: Int = 9000, host: Stri
         }.flatMap {
           case None =>
             ServiceUnavailable()
+              .flatTap(_ => logger.error(s"No upstream host available. Cannot handle request ${req.method} ${req.uri}"))
           case Some(host) =>
             val uri = req.uri.copy(authority = Some(Authority(host = RegName(host.host.getHostAddress), port = Some(host.publicPort))))
 
             http.use(client => client.fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp)))
+              .flatTap(_ => logger.error(s"Upstream host=${host} handled request ${req.method} ${req.uri}"))
         })
   }
 
   def withUpstream(addrs: Set[Addr]) =
     upstreamIterator.set(addrs.iterator).flatMap(_ =>
       upstream.getAndSet(addrs.toList))
+    .flatTap{
+      case _ if addrs.isEmpty => logger.warn("No available upstream to handle incoming requests")
+      case _ => IO.unit
+    }
 
   val server: IO[Unit] = BlazeBuilder[IO]
     .bindHttp(port, host)
