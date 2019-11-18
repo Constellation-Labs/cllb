@@ -13,8 +13,8 @@ object NetworkLoadbalancer extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
 
-    Hosts.validate(args)
-      .fold(err => IO(println(s"Cannot run, peer list validation failed with ${err}")).as(ExitCode.Error),
-            addr => new Manager(addr).run())
+    Hosts.validate(args).fold(
+      err => IO(println(s"Cannot run, peer list validation failed with ${err}")).as(ExitCode.Error),
+      addr => new Manager(addr).run())
   }
 }

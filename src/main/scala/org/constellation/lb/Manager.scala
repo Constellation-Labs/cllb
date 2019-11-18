@@ -1,34 +1,26 @@
 package org.constellation.lb
 
 import cats.data.NonEmptyList
-import cats.effect.ExitCode
+import cats.effect.{ContextShift, ExitCode, IO, Timer}
 import org.constellation.node.RestNodeApi
 import org.constellation.primitives.node.{Addr, Info}
 import org.http4s.client.blaze.BlazeClientBuilder
 import cats._
 import cats.data._
 import cats.syntax.all._
-import cats.effect.IO
 import cats.effect.concurrent.Ref
-import fs2.concurrent.{SignallingRef}
+import fs2.concurrent.SignallingRef
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import org.constellation.http.Loadbalancer
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.concurrent.ExecutionContext.global
 
-class Manager(init: NonEmptyList[Addr]) {
+class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t: Timer[IO]) {
+  private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
-  private implicit val o = new Order[Addr] {
-    override def compare(x: Addr, y: Addr): Int =
-      x.host.toString.compareTo(y.host.toString) match {
-        case 0 => x.port.compareTo(y.port)
-        case o => o
-      }
-  }
-
-  private implicit val cs = IO.contextShift(global)
-  private implicit val timer = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
   private val http = BlazeClientBuilder[IO](global).resource
 
   private lazy val hostsRef = Ref.of[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem).unsafeRunSync()
@@ -40,48 +32,52 @@ class Manager(init: NonEmptyList[Addr]) {
   private val lb = new Loadbalancer(lbTerminator)
 
   def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
-    IO(println(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
+    IO(logger.info(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
       .flatMap(_ => IO.unit)
 
-  val manager : IO[Unit] =
-    hostsRef.get.flatMap { hosts =>
-      println(s"Current hosts setup is=$hosts")
+  val updateProcedure =
+    hostsRef.get.flatMap (hosts =>
       clusterStatus(hosts.keys)
-        .flatMap { status =>
-          val activeHosts = discoverActiveHosts(status)
+        .flatMap ( status =>
+          discoverActiveHosts(status).flatMap{ activeHosts =>
 
-          val clusterHosts = activeHosts.filterNot(addr => status.contains(addr)).foldLeft(status)((acc, addr) =>
-            acc.add(addr, Option.empty[List[Info]])
-          )
+            val clusterHosts = activeHosts.filterNot(addr => status.contains(addr)).foldLeft(status)((acc, addr) =>
+              acc.add(addr, Option.empty[List[Info]])
+            )
 
-          println(activeHosts)
+            hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
+          }
+        ))
 
-          hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
-        }
-    }.flatMap(_ => IO.sleep(1 minute).flatMap(_ => manager))
+  val manager : IO[Unit] =
+    updateProcedure
+      .flatMap(_ => IO.sleep(1 minute))
+      .flatMap(_ => manager)
 
   def run(): IO[ExitCode] =
     NonEmptyList.of(lb.server, manager).parSequence.map(_ => ExitCode.Success)
 
-  def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): Set[Addr] = {
+  def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[Set[Addr]] = IO {
 
     val tresholdLevel = Math.floor(init.keys.size / 2)
 
-    init
+    val s : Set[Addr] = init
       .toList
       .collect {
-      case Some(el) => el
+        case Some(el) => el
       }.flatten.groupBy(_.ip).collect {
-        case (addr, proof) if proof.length > tresholdLevel => addr
-      }.toSet
-  }
+      case (addr, proof) if proof.length > tresholdLevel => addr
+    }.toSet
+
+    s
+  }.flatTap(hosts => logger.info(s"Active hosts $hosts"))
 
   def clusterStatus(hosts: NonEmptySet[Addr]):IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
-    println(s"Build cluster status on hosts=$hosts")
-    hosts.toNonEmptyList
-      .map(addr =>
-        node(addr).getInfo().map(addr -> Option(_))
-          .recover{ case _ => addr -> Option.empty[List[Info]]} )
-      .parSequence.map(_.toNem)
+    IO.apply(logger.info(s"Fetch cluster status on hosts=$hosts")).flatMap( _ =>
+      hosts.toNonEmptyList
+        .map(addr =>
+          node(addr).getInfo().map(addr -> Option(_))
+            .recover{ case _ => addr -> Option.empty[List[Info]]} )
+        .parSequence.map(_.toNem))
   }
 }

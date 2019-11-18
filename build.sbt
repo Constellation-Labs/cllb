@@ -1,4 +1,4 @@
-name := "elb-manager"
+name := "cl-lb"
 
 version := "0.1"
 
@@ -38,3 +38,5 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-circe",
   "org.http4s" %% "http4s-dsl",
 ).map(_ % http4sVersion)
+
+libraryDependencies += "org.slf4j" % "slf4j-simple" % "1.7.29"

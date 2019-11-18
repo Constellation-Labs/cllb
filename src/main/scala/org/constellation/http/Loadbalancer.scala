@@ -16,14 +16,19 @@ import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.Uri.{Authority, RegName}
 import cats.syntax.all._
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
+import io.chrisdavenport.log4cats.Logger
 
 class Loadbalancer(terminator: Signal[IO, Boolean], port: Int = 9000, host: String = "localhost") {
+  private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
+
+  logger.info(s"Setup Loadbalancer instance on $host:$port")
 
   private val upstream: Ref[IO, List[Addr]] = Ref.of[IO, List[Addr]](List.empty[Addr]).unsafeRunSync()
 
   private implicit val exc = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(24))
   private implicit val cs = IO.contextShift(exc)
-  private implicit val timer = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+  private implicit val timer = IO.timer(exc)
 
   private val http = BlazeClientBuilder[IO](exc).resource
 
@@ -50,9 +55,6 @@ class Loadbalancer(terminator: Signal[IO, Boolean], port: Int = 9000, host: Stri
   def withUpstream(addrs: Set[Addr]) =
     upstreamIterator.set(addrs.iterator).flatMap(_ =>
       upstream.getAndSet(addrs.toList))
-
-
-  println(s"Prepare loadbalancer on host=$host port=$port")
 
   val server: IO[Unit] = BlazeBuilder[IO]
     .bindHttp(port, host)
