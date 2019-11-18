@@ -22,18 +22,16 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   private val http = BlazeClientBuilder[IO](global)
-    .withRequestTimeout(1 second)
-    .withConnectTimeout(1 second)
+    .withRequestTimeout(5 second)
+    .withConnectTimeout(5 second)
     .withMaxTotalConnections(128)
     .resource
 
-  private lazy val hostsRef = Ref.of[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem).unsafeRunSync()
+  private lazy val hostsRef = Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
 
   def node(addr: Addr) = new RestNodeApi(addr, http)
 
-  private val lbTerminator = SignallingRef.apply[IO, Boolean](false).unsafeRunSync()
-
-  private val lb = new Loadbalancer(lbTerminator)
+  private val lb = new Loadbalancer()
 
   def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
     IO(logger.info(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
@@ -61,7 +59,8 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
       .flatTap(_ => logger.info("Next iteration"))
       .flatMap(_ => manager)
 
-  def run(): IO[ExitCode] = manager.map(_ => ExitCode.Success)
+  def run(): IO[ExitCode] = NonEmptyList.of(lb.server, manager).parSequence.map(_ => ExitCode.Success)
+    //manager.map(_ => ExitCode.Success)
   // lb.server.map(_ => ExitCode.Success)
     // NonEmptyList.of(lb.server, manager).parSequence.map(_ => ExitCode.Success)
 

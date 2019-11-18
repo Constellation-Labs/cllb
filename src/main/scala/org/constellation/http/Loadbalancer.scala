@@ -19,12 +19,12 @@ import cats.syntax.all._
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.chrisdavenport.log4cats.Logger
 
-class Loadbalancer(terminator: Signal[IO, Boolean], port: Int = 9000, host: String = "localhost") {
+class Loadbalancer(port: Int = 9000, host: String = "localhost") {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   logger.info(s"Setup Loadbalancer instance on $host:$port")
 
-  private val upstream: Ref[IO, List[Addr]] = Ref.of[IO, List[Addr]](List.empty[Addr]).unsafeRunSync()
+  private val upstream: Ref[IO, List[Addr]] = Ref.unsafe[IO, List[Addr]](List.empty[Addr])
 
   private implicit val exc = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(24))
   private implicit val cs = IO.contextShift(exc)
@@ -32,7 +32,7 @@ class Loadbalancer(terminator: Signal[IO, Boolean], port: Int = 9000, host: Stri
 
   private val http = BlazeClientBuilder[IO](exc).resource
 
-  private val upstreamIterator = Ref.of[IO, Iterator[Addr]](List.empty[Addr].iterator).unsafeRunSync()
+  private val upstreamIterator = Ref.unsafe[IO, Iterator[Addr]](List.empty[Addr].iterator)
 
   private val proxy = HttpService[IO] {
     case req =>

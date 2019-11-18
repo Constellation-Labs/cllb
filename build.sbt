@@ -40,3 +40,8 @@ libraryDependencies ++= Seq(
 ).map(_ % http4sVersion)
 
 libraryDependencies += "org.slf4j" % "slf4j-simple" % "1.7.29"
+
+// enablePlugins(JavaServerAppPackaging)
+enablePlugins(JavaAppPackaging)
+
+maintainer := "artur@evojam.com"
