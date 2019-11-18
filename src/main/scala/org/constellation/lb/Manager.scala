@@ -1,18 +1,17 @@
-package org.constellation.elb
+package org.constellation.lb
 
 import cats.data.NonEmptyList
-import cats.effect.IO
-import cats.effect.concurrent.Ref
+import cats.effect.ExitCode
 import org.constellation.node.RestNodeApi
 import org.constellation.primitives.node.{Addr, Info}
 import org.http4s.client.blaze.BlazeClientBuilder
 import cats._
-import cats._
 import cats.data._
 import cats.syntax.all._
 import cats.effect.IO
+import cats.effect.concurrent.Ref
+import fs2.concurrent.{SignallingRef}
 import org.constellation.http.Loadbalancer
-import org.constellation.util.aws.elb.AmazonElasticLoadBalancingScalaClient
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -23,7 +22,7 @@ class Manager(init: NonEmptyList[Addr]) {
   private implicit val o = new Order[Addr] {
     override def compare(x: Addr, y: Addr): Int =
       x.host.toString.compareTo(y.host.toString) match {
-        case 0 =>x.port.compareTo(y.port)
+        case 0 => x.port.compareTo(y.port)
         case o => o
       }
   }
@@ -32,18 +31,19 @@ class Manager(init: NonEmptyList[Addr]) {
   private implicit val timer = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
   private val http = BlazeClientBuilder[IO](global).resource
 
-  private lazy val hostsRef =
-    Ref.of[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem).unsafeRunSync()
+  private lazy val hostsRef = Ref.of[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem).unsafeRunSync()
 
   def node(addr: Addr) = new RestNodeApi(addr, http)
 
-  lazy val lb = new Loadbalancer()
+  private val lbTerminator = SignallingRef.apply[IO, Boolean](false).unsafeRunSync()
+
+  private val lb = new Loadbalancer(lbTerminator)
 
   def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
     IO(println(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
       .flatMap(_ => IO.unit)
 
-  def run(): IO[Unit] =
+  val manager : IO[Unit] =
     hostsRef.get.flatMap { hosts =>
       println(s"Current hosts setup is=$hosts")
       clusterStatus(hosts.keys)
@@ -58,7 +58,10 @@ class Manager(init: NonEmptyList[Addr]) {
 
           hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
         }
-  }.flatMap(_ => IO.sleep(1 minute).flatMap(_ => run()))
+    }.flatMap(_ => IO.sleep(1 minute).flatMap(_ => manager))
+
+  def run(): IO[ExitCode] =
+    NonEmptyList.of(lb.server, manager).parSequence.map(_ => ExitCode.Success)
 
   def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): Set[Addr] = {
 

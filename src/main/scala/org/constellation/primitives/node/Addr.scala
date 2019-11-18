@@ -6,7 +6,9 @@ import io.circe.generic.JsonCodec
 import io.circe.generic.semiauto.deriveDecoder
 import io.circe.Decoder
 
-case class Addr(host: InetAddress, port: Int)
+case class Addr(host: InetAddress, port: Int) {
+  @transient val publicPort:Int = port - 1
+}
 
 object Addr extends Codecs {
 

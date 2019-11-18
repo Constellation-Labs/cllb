@@ -4,21 +4,22 @@ import java.util.concurrent.Executors
 
 import cats.effect.IO
 import cats.effect.concurrent.Ref
+import fs2.concurrent.Signal
 import org.constellation.primitives.node.Addr
 import org.http4s.server.blaze.BlazeBuilder
 import org.http4s.HttpService
 import org.http4s.client.blaze.BlazeClientBuilder
 
 import scala.concurrent.ExecutionContext
-import scala.concurrent.ExecutionContext.global
 import org.http4s._
 import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.Uri.{Authority, RegName}
+import cats.syntax.all._
 
-class Loadbalancer(port: Int = 9000, host: String = "localhost")  {
+class Loadbalancer(terminator: Signal[IO, Boolean], port: Int = 9000, host: String = "localhost") {
 
-  private val upstream: Ref[IO, Set[Addr]] = Ref.unsafe(Set.empty[Addr])
+  private val upstream: Ref[IO, List[Addr]] = Ref.of[IO, List[Addr]](List.empty[Addr]).unsafeRunSync()
 
   private implicit val exc = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(24))
   private implicit val cs = IO.contextShift(exc)
@@ -26,24 +27,37 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost")  {
 
   private val http = BlazeClientBuilder[IO](exc).resource
 
+  private val upstreamIterator = Ref.of[IO, Iterator[Addr]](List.empty[Addr].iterator).unsafeRunSync()
+
   private val proxy = HttpService[IO] {
     case req =>
-      upstream.get.flatMap{
-        case hosts if hosts.isEmpty =>
-          ServiceUnavailable()
-        case hosts =>
+      upstream.get.flatMap(hosts =>
+        upstreamIterator.modify {
+          case i if i.hasNext => i -> i.nextOption()
+          case _ =>
+            val i = hosts.iterator
+            i -> i.nextOption()
+        }.flatMap {
+          case None =>
+            ServiceUnavailable()
+          case Some(host) =>
+            val uri = req.uri.copy(authority = Some(Authority(host = RegName(host.host.getHostAddress), port = Some(host.publicPort))))
 
-          val uri = req.uri.copy(authority = Some(Authority(host = RegName(""), port = Some(9000))))
-          http.use(client => client.fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp)))
-      }
+            http.use(client => client.fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp)))
+        })
   }
 
-  def withUpstream(addrs: Set[Addr]) = upstream.getAndSet(addrs)
+  def withUpstream(addrs: Set[Addr]) =
+    upstreamIterator.set(addrs.iterator).flatMap(_ =>
+      upstream.getAndSet(addrs.toList))
 
-  def run() {
-    BlazeBuilder[IO]
-      .bindHttp(port, host)
-      .mountService(proxy, "/")
-      .serve
-  }
+
+  println(s"Prepare loadbalancer on host=$host port=$port")
+
+  val server: IO[Unit] = BlazeBuilder[IO]
+    .bindHttp(port, host)
+    .mountService(proxy, "/")
+    .serve
+    .compile
+    .drain
 }

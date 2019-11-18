@@ -11,11 +11,10 @@ val catsVersion = "2.0.0"
 libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-effect",
   "org.typelevel" %% "cats-core",
-  "io.chrisdavenport" %% "log4cats-slf4j",
 ).map(_ % catsVersion)
 
 libraryDependencies ++= Seq(
-  "io.chrisdavenport" %% "log4cats-slf4j" % "1.0.0",
+  "io.chrisdavenport" %% "log4cats-slf4j" % "1.0.1",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.11.661",
   "org.scalatest" %% "scalatest" % "3.0.8" % "test",
   "org.scalactic" %% "scalactic" % "3.0.8" % "test",

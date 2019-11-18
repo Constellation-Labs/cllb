@@ -18,7 +18,7 @@ class RestNodeApi(node: Addr, http: Resource[IO, Client[IO]]) extends NodeApi {
 
   val baseUri = Uri.apply(
     Some(Scheme.http),
-    Some(Authority(host = RegName(node.host.getCanonicalHostName), port = Some(node.port)))
+    Some(Authority(host = RegName(node.host.getCanonicalHostName), port = Some(node.publicPort)))
   )
 
   def getInfo(): IO[List[Info]] =
