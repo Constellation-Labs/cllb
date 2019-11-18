@@ -41,6 +41,9 @@ libraryDependencies ++= Seq(
 
 libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "1.7.29"
 
+libraryDependencies += "com.github.cb372" %% "scalacache-guava" % "0.28.0"
+libraryDependencies += "com.github.cb372" %% "scalacache-cats-effect" % "0.28.0"
+
 fork in run := true
 
 outputStrategy := Some(StdoutOutput)

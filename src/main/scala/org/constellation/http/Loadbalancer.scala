@@ -2,9 +2,7 @@ package org.constellation.http
 
 import java.util.concurrent.Executors
 
-import cats.effect.IO
 import cats.effect.concurrent.Ref
-import fs2.concurrent.Signal
 import org.constellation.primitives.node.Addr
 import org.http4s.server.blaze.BlazeBuilder
 import org.http4s.HttpService
@@ -18,6 +16,10 @@ import org.http4s.Uri.{Authority, RegName}
 import cats.syntax.all._
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.chrisdavenport.log4cats.Logger
+import cats.effect.IO
+import org.http4s.client.Client
+
+import scala.language.postfixOps
 
 class Loadbalancer(port: Int = 9000, host: String = "localhost") {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
@@ -34,27 +36,41 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
 
   private val upstreamIterator = Ref.unsafe[IO, Iterator[Addr]](List.empty[Addr].iterator)
 
-  private val proxy = HttpService[IO] {
-    case req =>
-      upstream.get.flatMap(hosts =>
-        upstreamIterator.modify {
-          case i if i.hasNext => i -> i.nextOption()
-          case _ =>
-            val i = hosts.iterator
-            i -> i.nextOption()
-        }.flatMap {
+  private val sessions = new SessionCache()
+
+  private def resolveUpstream(req: Request[IO]): IO[Option[Addr]] =
+    upstream.get.flatMap(hosts =>
+      sessions.resolveUpstream(req, hosts)
+          .flatMap {
+            case addr: Some[_] =>
+              IO.pure(addr).flatTap(addr => logger.info(s"Reusing previous upstream for client request addr=$addr"))
+            case _ =>
+              upstreamIterator.modify {
+                case i if i.hasNext => i -> i.nextOption()
+                case _ =>
+                  val i = hosts.iterator
+                  i -> i.nextOption()
+              }
+          })
+
+  private def proxy(http: Client[IO]) = HttpService[IO] ( req =>
+      resolveUpstream(req)
+        .flatTap(_.map(sessions.memoizeUpstream(req, _)).getOrElse(IO.unit))
+        .flatMap {
           case None =>
             ServiceUnavailable()
               .flatTap(_ => logger.error(s"No upstream host available. Cannot handle request ${req.method} ${req.uri}"))
-          case Some(host) =>
-            val uri = req.uri.copy(authority = Some(Authority(host = RegName(host.host.getHostAddress), port = Some(host.publicPort))))
+          case Some(upstreamHost) =>
+            val uri = req.uri.copy(authority = Some(
+              req.uri.authority.getOrElse(Authority()).copy(
+                  host = RegName(upstreamHost.host.getHostAddress),
+                  port = Some(upstreamHost.publicPort))))
 
-            http.use(client => client.fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp)))
-              .flatTap(_ => logger.error(s"Upstream host=${host} handled request ${req.method} ${req.uri}"))
+            http.fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp))
+              .flatTap(_ => logger.info(s"Upstream host=${upstreamHost} handled request ${req.method} ${req.uri}"))
         })
-  }
 
-  def withUpstream(addrs: Set[Addr]) =
+  def withUpstream(addrs: Set[Addr]): IO[List[Addr]] =
     upstreamIterator.set(addrs.iterator).flatMap(_ =>
       upstream.getAndSet(addrs.toList))
     .flatTap{
@@ -62,10 +78,12 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
       case _ => IO.unit
     }
 
-  val server: IO[Unit] = BlazeBuilder[IO]
-    .bindHttp(port, host)
-    .mountService(proxy, "/")
-    .serve
-    .compile
-    .drain
+  val server: IO[Unit] =
+    http.use(client =>
+      BlazeBuilder[IO]
+        .bindHttp(port, host)
+        .mountService(proxy(client), "/")
+        .serve
+        .compile
+        .drain)
 }

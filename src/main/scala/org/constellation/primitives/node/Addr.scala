@@ -3,7 +3,6 @@ package org.constellation.primitives.node
 import java.net.InetAddress
 
 import cats.Order
-import io.circe.generic.JsonCodec
 import io.circe.generic.semiauto.deriveDecoder
 import io.circe.Decoder
 

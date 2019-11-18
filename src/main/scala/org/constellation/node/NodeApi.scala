@@ -13,15 +13,13 @@ trait NodeApi {
   def getInfo: IO[List[Info]]
 }
 
-class RestNodeApi(node: Addr, http: Resource[IO, Client[IO]]) extends NodeApi {
-  // this should be moved as a common space
-
+class RestNodeApi(node: Addr)(implicit http: Client[IO]) extends NodeApi {
   val baseUri = Uri.apply(
     Some(Scheme.http),
     Some(Authority(host = RegName(node.host.getCanonicalHostName), port = Some(node.publicPort)))
   )
 
   def getInfo(): IO[List[Info]] =
-    http.use(_.expect(baseUri.withPath("/cluster/info"))(jsonOf[IO, List[Info]]))
+    http.expect(baseUri.withPath("/cluster/info"))(jsonOf[IO, List[Info]])
 
 }

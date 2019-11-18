@@ -13,6 +13,7 @@ import fs2.concurrent.SignallingRef
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import org.constellation.http.Loadbalancer
+import org.http4s.client.Client
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -29,7 +30,7 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
 
   private lazy val hostsRef = Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
 
-  def node(addr: Addr) = new RestNodeApi(addr, http)
+  def node(addr: Addr)(implicit http: Client[IO]) = new RestNodeApi(addr)
 
   private val lb = new Loadbalancer()
 
@@ -37,13 +38,13 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
     IO(logger.info(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
       .flatMap(_ => IO.unit)
 
-  val updateProcedure =
+  private def updateProcedure(implicit client: Client[IO]) =
     hostsRef.get
       .flatTap(hosts => logger.info(s"Init cluster discovery from ${hosts.keys}"))
       .flatMap(hosts =>
-        clusterStatus(hosts.keys)
-          .flatMap ( status =>
-            discoverActiveHosts(status).flatMap{ activeHosts =>
+        clusterStatus(hosts.keys)(client)
+          .flatMap(status =>
+            discoverActiveHosts(status).flatMap {activeHosts =>
               val clusterHosts = activeHosts.filterNot(addr => status.contains(addr)).foldLeft(status)((acc, addr) =>
                 acc.add(addr, Option.empty[List[Info]])
               )
@@ -52,17 +53,17 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
             }
           ))
 
-  val manager : IO[Unit] =
+  private def manager(implicit client: Client[IO]): IO[Unit] =
     updateProcedure
       .flatTap(_ => logger.info("Scheduling next update round"))
-      .flatMap(_ => IO.sleep(10 seconds))
+      .flatMap(_ => IO.sleep(60 seconds))
       .flatTap(_ => logger.info("Next iteration"))
       .flatMap(_ => manager)
 
-  def run(): IO[ExitCode] = NonEmptyList.of(lb.server, manager).parSequence.map(_ => ExitCode.Success)
-    //manager.map(_ => ExitCode.Success)
-  // lb.server.map(_ => ExitCode.Success)
-    // NonEmptyList.of(lb.server, manager).parSequence.map(_ => ExitCode.Success)
+  def run(): IO[ExitCode] =
+    http.use {client =>
+      NonEmptyList.of(lb.server, manager(client)).parSequence.map(_ => ExitCode.Success)
+    }
 
   def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[Set[Addr]] = IO {
 
@@ -79,7 +80,7 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
     s
   }.flatTap(hosts => logger.info(s"Active hosts $hosts"))
 
-  def clusterStatus(hosts: NonEmptySet[Addr]):IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
+  def clusterStatus(hosts: NonEmptySet[Addr])(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
     IO.apply(logger.info(s"Fetch cluster status on hosts=$hosts")).flatMap( _ =>
       hosts.toNonEmptyList
         .map(addr =>
