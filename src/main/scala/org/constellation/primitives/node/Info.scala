@@ -18,7 +18,7 @@ import scala.util.control.Exception.catching
 case class Info(
   id: Id,
   ip: Addr,
-  status: State.State,
+  status: NodeState.State,
   reputation: Reputation
 )
 

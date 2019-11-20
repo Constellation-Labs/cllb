@@ -3,23 +3,23 @@ package org.constellation.lb
 import cats.data.NonEmptyList
 import cats.effect.{ContextShift, ExitCode, IO, Timer}
 import org.constellation.node.RestNodeApi
-import org.constellation.primitives.node.{Addr, Info}
+import org.constellation.primitives.node.{Addr, Info, NodeState}
 import org.http4s.client.blaze.BlazeClientBuilder
 import cats._
 import cats.data._
 import cats.syntax.all._
 import cats.effect.concurrent.Ref
-import fs2.concurrent.SignallingRef
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import org.constellation.http.Loadbalancer
+import org.constellation.LoadbalancerConfig
 import org.http4s.client.Client
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.concurrent.ExecutionContext.global
 
-class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t: Timer[IO]) {
+class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val C: ContextShift[IO], val t: Timer[IO]) {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   private val http = BlazeClientBuilder[IO](global)
@@ -32,7 +32,7 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
 
   def node(addr: Addr)(implicit http: Client[IO]) = new RestNodeApi(addr)
 
-  private val lb = new Loadbalancer()
+  private val lb = new Loadbalancer(config.port, config.`if`)
 
   def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
     IO(logger.info(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
@@ -74,7 +74,7 @@ class Manager(init: NonEmptyList[Addr])(implicit val C: ContextShift[IO], val t:
       .collect {
         case Some(el) => el
       }.flatten.groupBy(_.ip).collect {
-      case (addr, proof) if proof.length > tresholdLevel => addr
+      case (addr, proof: List[Info]) if proof.count(_.status == NodeState.Ready) > tresholdLevel => addr
     }.toSet
 
     s

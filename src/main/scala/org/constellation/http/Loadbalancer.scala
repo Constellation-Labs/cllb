@@ -24,8 +24,6 @@ import scala.language.postfixOps
 class Loadbalancer(port: Int = 9000, host: String = "localhost") {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
-  logger.info(s"Setup Loadbalancer instance on $host:$port")
-
   private val upstream: Ref[IO, List[Addr]] = Ref.unsafe[IO, List[Addr]](List.empty[Addr])
 
   private implicit val exc = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(24))
@@ -79,11 +77,12 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
     }
 
   val server: IO[Unit] =
-    http.use(client =>
-      BlazeBuilder[IO]
-        .bindHttp(port, host)
-        .mountService(proxy(client), "/")
-        .serve
-        .compile
-        .drain)
+    logger.info(s"Setup Loadbalancer instance on $host:$port").flatMap(_ =>
+      http.use(client =>
+        BlazeBuilder[IO]
+          .bindHttp(port, host)
+          .mountService(proxy(client), "/")
+          .serve
+          .compile
+          .drain))
 }

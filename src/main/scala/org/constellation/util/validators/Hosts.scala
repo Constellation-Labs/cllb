@@ -9,10 +9,10 @@ import org.constellation.primitives.node.Addr
 import scala.util.control.Exception.catching
 
 object Hosts {
-  def validate(input: List[String]): ValidatedNel[ArgumentValidationError, NonEmptyList[Addr]] =
+  def validate(input: List[String]): ValidatedNel[ArgumentValidationError, Option[NonEmptyList[Addr]]] =
     input match {
       case Nil =>
-        EmptyListOfHosts.invalidNel
+        Option.empty[NonEmptyList[Addr]].validNel
       case head :: tail =>
         NonEmptyList(head, tail)
           .map(_.split(':').toList)
@@ -28,6 +28,7 @@ object Hosts {
             case invalid => AddressMalformed(s"${invalid}").invalidNel[Addr]
           }
           .sequence
+          .map(Option(_))
     }
 
   sealed trait ArgumentValidationError

@@ -43,6 +43,7 @@ libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "1.7.29"
 
 libraryDependencies += "com.github.cb372" %% "scalacache-guava" % "0.28.0"
 libraryDependencies += "com.github.cb372" %% "scalacache-cats-effect" % "0.28.0"
+libraryDependencies += "com.github.pureconfig" %% "pureconfig" % "0.12.1"
 
 fork in run := true
 

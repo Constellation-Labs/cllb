@@ -5,6 +5,7 @@ import java.net.InetAddress
 import cats.Order
 import io.circe.generic.semiauto.deriveDecoder
 import io.circe.Decoder
+import pureconfig.ConfigReader
 
 case class Addr(host: InetAddress, port: Int) {
   @transient val publicPort:Int = port - 1
@@ -21,4 +22,6 @@ object Addr extends Codecs {
         case o => o
       }
   }
+
+  implicit val inetAddressRader = ConfigReader[String].map(InetAddress.getByName)
 }
