@@ -1,6 +1,6 @@
 name := "cl-lb"
 
-version := "0.1"
+version := "0.1.0"
 
 scalaVersion := "2.13.1"
 
@@ -49,7 +49,16 @@ fork in run := true
 
 outputStrategy := Some(StdoutOutput)
 
-// enablePlugins(JavaServerAppPackaging)
 enablePlugins(JavaAppPackaging)
 
 maintainer := "artur@evojam.com"
+
+enablePlugins(DockerPlugin)
+
+packageName in Docker := "abankowski/cluster-loadbalancer"
+
+dockerBaseImage := "openjdk:12-alpine"
+
+dockerExposedPorts := Seq(9000)
+
+enablePlugins(AshScriptPlugin)

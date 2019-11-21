@@ -51,6 +51,13 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
               }
           })
 
+  private val util = HttpRoutes.of[IO] {
+    case GET -> Root / "health" => upstream.get.flatMap {
+      case Nil => ServiceUnavailable()
+      case _ => Ok()
+    }
+  }
+
   private def proxy(http: Client[IO]) = HttpService[IO] ( req =>
       resolveUpstream(req)
         .flatTap(_.map(sessions.memoizeUpstream(req, _)).getOrElse(IO.unit))
@@ -81,6 +88,7 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
       http.use(client =>
         BlazeBuilder[IO]
           .bindHttp(port, host)
+          .mountService(util, "utils")
           .mountService(proxy(client), "/")
           .serve
           .compile
