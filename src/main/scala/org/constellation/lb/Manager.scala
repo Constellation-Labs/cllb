@@ -55,9 +55,8 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val
 
   private def manager(implicit client: Client[IO]): IO[Unit] =
     updateProcedure
-      .flatTap(_ => logger.info("Scheduling next update round"))
+      .flatTap(_ => logger.info("Scheduling next cluster status update round"))
       .flatMap(_ => IO.sleep(60 seconds))
-      .flatTap(_ => logger.info("Next iteration"))
       .flatMap(_ => manager)
 
   def run(): IO[ExitCode] =
@@ -81,11 +80,16 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val
   }.flatTap(hosts => logger.info(s"Active hosts $hosts"))
 
   def clusterStatus(hosts: NonEmptySet[Addr])(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
-    IO.apply(logger.info(s"Fetch cluster status on hosts=$hosts")).flatMap( _ =>
+    IO.apply(logger.info(s"Fetch cluster status from following ${hosts.size} hosts: ${hosts.toList.take(5)}")).flatMap( _ =>
       hosts.toNonEmptyList
         .map(addr =>
-          node(addr).getInfo().map(addr -> Option(_))
-            .recover{ case _ => addr -> Option.empty[List[Info]]} )
+          node(addr).getInfo().flatMap(result => logger.debug(s"Node $addr returned $result")
+            .map(_ => addr -> Option(result)))
+            .recoverWith{
+              case error =>
+                logger.info(s"Cannot retrieve cluster status from addr=$addr error=$error")
+                  .map( _ => addr -> Option.empty[List[Info]])
+            } )
         .parSequence.map(_.toNem))
   }
 }

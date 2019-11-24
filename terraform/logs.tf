@@ -54,7 +54,7 @@ resource "aws_cloudwatch_log_group" "cl_log_group" {
   }
 }
 
-resource "aws_cloudwatch_log_stream" "cb_log_stream" {
+resource "aws_cloudwatch_log_stream" "cl_log_stream" {
   name           = "cl-lb-log-stream"
   log_group_name = aws_cloudwatch_log_group.cl_log_group.name
 }

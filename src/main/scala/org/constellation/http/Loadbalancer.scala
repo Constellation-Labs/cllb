@@ -52,10 +52,7 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
           })
 
   private val util = HttpRoutes.of[IO] {
-    case GET -> Root / "health" => upstream.get.flatMap {
-      case Nil => ServiceUnavailable()
-      case _ => Ok()
-    }
+    case GET -> Root / "health" => upstream.get.flatMap(l => Ok(s"${l.size}"))
   }
 
   private def proxy(http: Client[IO]) = HttpService[IO] ( req =>
@@ -76,19 +73,20 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
         })
 
   def withUpstream(addrs: Set[Addr]): IO[List[Addr]] =
-    upstreamIterator.set(addrs.iterator).flatMap(_ =>
-      upstream.getAndSet(addrs.toList))
-    .flatTap{
-      case _ if addrs.isEmpty => logger.warn("No available upstream to handle incoming requests")
-      case _ => IO.unit
-    }
+    upstreamIterator.set(addrs.iterator)
+      .flatMap(_ =>
+        upstream.getAndSet(addrs.toList))
+      .flatTap{
+        case _ if addrs.isEmpty => logger.warn("No available upstream to handle incoming requests")
+        case _ => IO.unit
+      }
 
   val server: IO[Unit] =
     logger.info(s"Setup Loadbalancer instance on $host:$port").flatMap(_ =>
       http.use(client =>
         BlazeBuilder[IO]
           .bindHttp(port, host)
-          .mountService(util, "utils")
+          .mountService(util, "/utils")
           .mountService(proxy(client), "/")
           .serve
           .compile

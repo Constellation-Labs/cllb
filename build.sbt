@@ -1,6 +1,8 @@
+import com.typesafe.sbt.packager.docker._
+
 name := "cl-lb"
 
-version := "0.1.0"
+version := "0.1.1"
 
 scalaVersion := "2.13.1"
 
@@ -39,7 +41,7 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-dsl",
 ).map(_ % http4sVersion)
 
-libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "1.7.29"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
 libraryDependencies += "com.github.cb372" %% "scalacache-guava" % "0.28.0"
 libraryDependencies += "com.github.cb372" %% "scalacache-cats-effect" % "0.28.0"
@@ -60,5 +62,14 @@ packageName in Docker := "abankowski/cluster-loadbalancer"
 dockerBaseImage := "openjdk:12-alpine"
 
 dockerExposedPorts := Seq(9000)
+
+dockerCommands ++= Seq(
+          Cmd("USER", "root"),
+          Cmd("RUN", "apk add --update python python-dev py-pip build-base && " +
+                      "pip install awscli --upgrade" +
+                      "&& apk --purge -v del py-pip  && rm -rf /var/cache/apk/*"),
+          ) ++ dockerUsername.value.map(Cmd("USER", _)).toSeq
+
+javaOptions in Universal ++= Seq("-Dconfig.file=/tmp/application.conf")
 
 enablePlugins(AshScriptPlugin)

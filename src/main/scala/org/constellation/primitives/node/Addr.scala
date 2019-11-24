@@ -9,6 +9,8 @@ import pureconfig.ConfigReader
 
 case class Addr(host: InetAddress, port: Int) {
   @transient val publicPort:Int = port - 1
+
+  override def toString = s"${host.getHostAddress}:${port}"
 }
 
 object Addr extends Codecs {
@@ -23,5 +25,5 @@ object Addr extends Codecs {
       }
   }
 
-  implicit val inetAddressRader = ConfigReader[String].map(InetAddress.getByName)
+  implicit val inetAddressRader: ConfigReader[InetAddress] = ConfigReader[String].map(InetAddress.getByName)
 }

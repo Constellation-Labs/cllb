@@ -22,7 +22,7 @@ variable "az_count" {
 
 variable "app_image" {
   description = "Docker image to run in the ECS cluster"
-  default     = "abankowski/cluster-loadbalancer:0.1.0"
+  default     = "abankowski/cluster-loadbalancer:0.1.1"
 }
 
 variable "app_port" {

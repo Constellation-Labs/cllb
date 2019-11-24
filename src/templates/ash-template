@@ -1,0 +1,108 @@
+#!/bin/sh
+
+realpath () {
+(
+  TARGET_FILE="$1"
+
+  cd "$(dirname "$TARGET_FILE")"
+  TARGET_FILE=$(basename "$TARGET_FILE")
+
+  COUNT=0
+  while [ -L "$TARGET_FILE" -a $COUNT -lt 100 ]
+  do
+      TARGET_FILE=$(readlink "$TARGET_FILE")
+      cd "$(dirname "$TARGET_FILE")"
+      TARGET_FILE=$(basename "$TARGET_FILE")
+      COUNT=$(($COUNT + 1))
+  done
+
+  if [ "$TARGET_FILE" = "." -o "$TARGET_FILE" = ".." ]; then
+    cd "$TARGET_FILE"
+    TARGET_FILEPATH=
+  else
+    TARGET_FILEPATH=/$TARGET_FILE
+  fi
+
+  echo "$(pwd -P)/$TARGET_FILE"
+)
+}
+
+# Allow user and template_declares (see below) to add java options.
+addJava () {
+  java_opts="$java_opts $1"
+}
+
+# Allow user to specify java options. These get listed first per bash-template.
+if [ -n "$JAVA_OPTS" ]
+then
+  addJava "$JAVA_OPTS"
+fi
+
+# Loads a configuration file full of default command line options for this script.
+loadConfigFile() {
+  cat "$1" | sed '/^\#/d;s/\r$//' | sed 's/^-J-X/-X/' | tr '\r\n' ' '
+}
+
+# Detect which JVM we should use.
+get_java_cmd() {
+  # High-priority override for Jlink images
+  if [ -n "$bundled_jvm" ];  then
+    echo "$bundled_jvm/bin/java"
+  elif [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ];  then
+    echo "$JAVA_HOME/bin/java"
+  else
+    echo "java"
+  fi
+}
+
+# Processes incoming arguments and places them in appropriate global variables.  called by the run method.
+process_args () {
+  local no_more_snp_opts=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+             --) shift && no_more_snp_opts=1 && break ;;
+       -h|-help) usage; exit 1 ;;
+    -v|-verbose) verbose=1 && shift ;;
+      -d|-debug) debug=1 && shift ;;
+
+    -no-version-check) no_version_check=1 && shift ;;
+
+           -mem) echo "!! WARNING !! -mem option is ignored. Please use -J-Xmx and -J-Xms" && shift 2 ;;
+     -jvm-debug) require_arg port "$1" "$2" && addDebugger $2 && shift 2 ;;
+
+          -main) custom_mainclass="$2" && shift 2 ;;
+
+     -java-home) require_arg path "$1" "$2" && jre=`eval echo $2` && java_cmd="$jre/bin/java" && shift 2 ;;
+
+ -D*|-agentlib*|-XX*) addJava "$1" && shift ;;
+                 -J*) addJava "${1:2}" && shift ;;
+                   *) addResidual "$1" && shift ;;
+    esac
+  done
+
+  if [[ no_more_snp_opts ]]; then
+    while [[ $# -gt 0 ]]; do
+      addResidual "$1" && shift
+    done
+  fi
+}
+
+aws s3 cp s3://cl-lb-config/application.conf /tmp/application.conf
+
+real_script_path="$(realpath "$0")"
+app_home="$(realpath "$(dirname "$real_script_path")")"
+lib_dir="$(realpath "${app_home}/../lib")"
+
+app_mainclass=${{app_mainclass}}
+
+${{template_declares}}
+
+process_args "$@"
+
+java_cmd="$(get_java_cmd)"
+
+
+# If a configuration file exist, read the contents to $opts
+[ -f "$script_conf_file" ] && opts=$(loadConfigFile "$script_conf_file")
+
+exec "$java_cmd" $java_opts -classpath $app_classpath $opts $app_mainclass "$@"

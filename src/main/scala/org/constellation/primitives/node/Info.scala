@@ -14,7 +14,6 @@ import io.circe._, io.circe.generic.semiauto._
 
 import scala.util.control.Exception.catching
 
-
 case class Info(
   id: Id,
   ip: Addr,
