@@ -34,7 +34,8 @@ object NetworkLoadbalancer extends IOApp {
           case _ => Left(logger.error("The list of inital hosts is empty, provide via config or commandline"))
         }
         .fold(
-          faultyHandler => faultyHandler.map(_ => ExitCode.Error), {
+          _.map(_ => ExitCode.Error),
+          {
             case (hosts, config) => new Manager(hosts, config).run()
           }
         )

@@ -66,14 +66,17 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val
 
   def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[Set[Addr]] = IO {
 
-    val tresholdLevel = Math.floor(init.keys.size / 2)
+    val tresholdLevel = init.keys.size / 2
+
+    def isActive(addr: Addr, proof: List[Info]) =
+      init(addr).nonEmpty && proof.count(_.status == NodeState.Ready) > tresholdLevel
 
     val s : Set[Addr] = init
       .toList
       .collect {
         case Some(el) => el
       }.flatten.groupBy(_.ip).collect {
-      case (addr, proof: List[Info]) if proof.count(_.status == NodeState.Ready) > tresholdLevel => addr
+      case (addr: Addr, proof: List[Info]) if isActive(addr, proof) => addr
     }.toSet
 
     s
