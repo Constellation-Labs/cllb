@@ -24,7 +24,7 @@ POLICY
 
 resource "aws_s3_bucket_object" "application-conf" {
   bucket = "cl-lb-config"
-  key    = "application-conf"
+  key    = "application.conf"
   source = "./terraform/templates/application.conf"
 
   etag = filemd5("./terraform/templates/application.conf")

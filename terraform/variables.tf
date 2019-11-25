@@ -10,6 +10,16 @@ variable "ecs_task_execution_role_name" {
   default = "cl-lb"
 }
 
+variable "ecs_task_role_name" {
+  description = "ECS task role name"
+  default = "cl-lb-task"
+}
+
+variable "ecs_task_role_policy" {
+  description = "ECS task role policy"
+  default = "cl-lb-task-policy"
+}
+
 variable "ecs_auto_scale_role_name" {
   description = "ECS auto scale role Name"
   default = "myEcsAutoScaleRole"
