@@ -11,7 +11,8 @@ class InfoSpec extends FunSpec with Matchers {
 
   describe("valid json object string") {
 
-    val validJson = """{"id":{"hex":"4256bee35df47fd49885d0a5931178e9d0cf33f314b74680646cd391a96ba25fc33cc7c3e1274ffc29a64828d5feeb2f99242e0dffb13c006250d35b3f810551"},"ip":{"host":"35.236.125.81","port":9001},"status":"PendingDownload","reputation":0}"""
+    val validJson =
+      """{"id":{"hex":"4256bee35df47fd49885d0a5931178e9d0cf33f314b74680646cd391a96ba25fc33cc7c3e1274ffc29a64828d5feeb2f99242e0dffb13c006250d35b3f810551"},"ip":{"host":"35.236.125.81","port":9001},"status":"PendingDownload","reputation":0}"""
 
     it("parses as an object") {
       decode[Info](validJson) shouldBe a[Right[_, _]]
@@ -20,7 +21,8 @@ class InfoSpec extends FunSpec with Matchers {
 
   describe("valid json array string") {
 
-    val validJson = """[{"id":{"hex":"4256bee35df47fd49885d0a5931178e9d0cf33f314b74680646cd391a96ba25fc33cc7c3e1274ffc29a64828d5feeb2f99242e0dffb13c006250d35b3f810551"},"ip":{"host":"35.236.125.81","port":9001},"status":"PendingDownload","reputation":0}]"""
+    val validJson =
+      """[{"id":{"hex":"4256bee35df47fd49885d0a5931178e9d0cf33f314b74680646cd391a96ba25fc33cc7c3e1274ffc29a64828d5feeb2f99242e0dffb13c006250d35b3f810551"},"ip":{"host":"35.236.125.81","port":9001},"status":"PendingDownload","reputation":0}]"""
 
     it("parses as list of objects") {
       decode[List[Info]](validJson) shouldBe a[Right[_, _]]

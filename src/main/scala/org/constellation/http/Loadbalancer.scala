@@ -26,8 +26,8 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
 
   private val upstream: Ref[IO, List[Addr]] = Ref.unsafe[IO, List[Addr]](List.empty[Addr])
 
-  private implicit val exc = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(24))
-  private implicit val cs = IO.contextShift(exc)
+  private implicit val exc   = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(24))
+  private implicit val cs    = IO.contextShift(exc)
   private implicit val timer = IO.timer(exc)
 
   private val http = BlazeClientBuilder[IO](exc).resource
@@ -37,8 +37,10 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
   private val sessions = new SessionCache()
 
   private def resolveUpstream(req: Request[IO]): IO[Option[Addr]] =
-    upstream.get.flatMap(hosts =>
-      sessions.resolveUpstream(req, hosts)
+    upstream.get.flatMap(
+      hosts =>
+        sessions
+          .resolveUpstream(req, hosts)
           .flatMap {
             case addr: Some[_] =>
               IO.pure(addr).flatTap(addr => logger.info(s"Reusing previous upstream for client request addr=$addr"))
@@ -49,7 +51,8 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
                   val i = hosts.iterator
                   i -> i.nextOption()
               }
-          })
+          }
+    )
 
   private val util = HttpRoutes.of[IO] {
     case GET -> Root / "health" =>
@@ -58,40 +61,55 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
         .flatMap(l => Ok(s"${l.size}"))
   }
 
-  private def proxy(http: Client[IO]) = HttpService[IO] ( req =>
-      resolveUpstream(req)
-        .flatTap(_.map(sessions.memoizeUpstream(req, _)).getOrElse(IO.unit))
-        .flatMap {
-          case None =>
-            ServiceUnavailable()
-              .flatTap(_ => logger.error(s"No upstream host available. Cannot handle request ${req.method} ${req.uri}"))
-          case Some(upstreamHost) =>
-            val uri = req.uri.copy(authority = Some(
-              req.uri.authority.getOrElse(Authority()).copy(
-                  host = RegName(upstreamHost.host.getHostAddress),
-                  port = Some(upstreamHost.publicPort))))
+  private def proxy(http: Client[IO]) =
+    HttpService[IO](
+      req =>
+        resolveUpstream(req)
+          .flatTap(_.map(sessions.memoizeUpstream(req, _)).getOrElse(IO.unit))
+          .flatMap {
+            case None =>
+              ServiceUnavailable()
+                .flatTap(
+                  _ => logger.error(s"No upstream host available. Cannot handle request ${req.method} ${req.uri}")
+                )
+            case Some(upstreamHost) =>
+              val uri = req.uri.copy(
+                authority = Some(
+                  req.uri.authority
+                    .getOrElse(Authority())
+                    .copy(host = RegName(upstreamHost.host.getHostAddress), port = Some(upstreamHost.publicPort))
+                )
+              )
 
-            http.fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp))
-              .flatTap(_ => logger.info(s"Upstream host=${upstreamHost} handled request ${req.method} ${req.uri}"))
-        })
+              http
+                .fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp))
+                .flatTap(_ => logger.info(s"Upstream host=${upstreamHost} handled request ${req.method} ${req.uri}"))
+          }
+    )
 
   def withUpstream(addrs: Set[Addr]): IO[List[Addr]] =
-    upstreamIterator.set(addrs.iterator)
-      .flatMap(_ =>
-        upstream.getAndSet(addrs.toList))
-      .flatTap{
+    upstreamIterator
+      .set(addrs.iterator)
+      .flatMap(_ => upstream.getAndSet(addrs.toList))
+      .flatTap {
         case _ if addrs.isEmpty => logger.warn("No available upstream to handle incoming requests")
-        case _ => IO.unit
+        case _                  => IO.unit
       }
 
   val server: IO[Unit] =
-    logger.info(s"Setup Loadbalancer instance on $host:$port").flatMap(_ =>
-      http.use(client =>
-        BlazeBuilder[IO]
-          .bindHttp(port, host)
-          .mountService(util, "/utils")
-          .mountService(proxy(client), "/")
-          .serve
-          .compile
-          .drain))
+    logger
+      .info(s"Setup Loadbalancer instance on $host:$port")
+      .flatMap(
+        _ =>
+          http.use(
+            client =>
+              BlazeBuilder[IO]
+                .bindHttp(port, host)
+                .mountService(util, "/utils")
+                .mountService(proxy(client), "/")
+                .serve
+                .compile
+                .drain
+          )
+      )
 }

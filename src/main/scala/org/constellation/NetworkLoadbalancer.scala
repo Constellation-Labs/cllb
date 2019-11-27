@@ -20,24 +20,27 @@ object NetworkLoadbalancer extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
 
-    Hosts.validate(args)
+    Hosts
+      .validate(args)
       .leftMap(err => logger.error(s"Cannot run, peer list validation failed with ${err}"))
       .toEither
-      .flatMap(commandlineNodes =>
-        ConfigSource.default.load[LoadbalancerConfig]
-          .bimap(
-            error => logger.error(s"Configuration errors: $error"),
-            config =>
-              (NonEmptyList.fromList(config.networkNodes.toList) |+| commandlineNodes).map(_ -> config) ))
-        .flatMap {
-          case Some(context) => Right(context)
-          case _ => Left(logger.error("The list of inital hosts is empty, provide via config or commandline"))
+      .flatMap(
+        commandlineNodes =>
+          ConfigSource.default
+            .load[LoadbalancerConfig]
+            .bimap(
+              error => logger.error(s"Configuration errors: $error"),
+              config => (NonEmptyList.fromList(config.networkNodes.toList) |+| commandlineNodes).map(_ -> config)
+            )
+      )
+      .flatMap {
+        case Some(context) => Right(context)
+        case _             => Left(logger.error("The list of inital hosts is empty, provide via config or commandline"))
+      }
+      .fold(
+        _.map(_ => ExitCode.Error), {
+          case (hosts, config) => new Manager(hosts, config).run
         }
-        .fold(
-          _.map(_ => ExitCode.Error),
-          {
-            case (hosts, config) => new Manager(hosts, config).run
-          }
-        )
+      )
   }
 }

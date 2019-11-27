@@ -19,7 +19,10 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.concurrent.ExecutionContext.global
 
-class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val C: ContextShift[IO], val t: Timer[IO]) {
+class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
+    implicit val C: ContextShift[IO],
+    val t: Timer[IO]
+) {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   private val http = BlazeClientBuilder[IO](global)
@@ -28,30 +31,35 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val
     .withMaxTotalConnections(128)
     .resource
 
-  private lazy val hostsRef = Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
+  private lazy val hostsRef =
+    Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
 
   def node(addr: Addr)(implicit http: Client[IO]) = new RestNodeApi(addr)
 
   private val lb = new Loadbalancer(config.port, config.`if`)
 
   def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
-    IO(logger.info(s"Update lb setup with hosts=$hosts")).flatMap( _ => lb.withUpstream(hosts))
+    IO(logger.info(s"Update lb setup with hosts=$hosts"))
+      .flatMap(_ => lb.withUpstream(hosts))
       .flatMap(_ => IO.unit)
 
   private def updateProcedure(implicit client: Client[IO]) =
     hostsRef.get
       .flatTap(hosts => logger.info(s"Init cluster discovery from ${hosts.keys}"))
-      .flatMap(hosts =>
-        clusterStatus(hosts.keys)(client)
-          .flatMap(status =>
-            discoverActiveHosts(status).flatMap {activeHosts =>
-              val clusterHosts = activeHosts.filterNot(addr => status.contains(addr)).foldLeft(status)((acc, addr) =>
-                acc.add(addr, Option.empty[List[Info]])
-              )
+      .flatMap(
+        hosts =>
+          clusterStatus(hosts.keys)(client)
+            .flatMap(
+              status =>
+                discoverActiveHosts(status).flatMap { activeHosts =>
+                  val clusterHosts = activeHosts
+                    .filterNot(addr => status.contains(addr))
+                    .foldLeft(status)((acc, addr) => acc.add(addr, Option.empty[List[Info]]))
 
-              hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
-            }
-          ))
+                  hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
+                }
+            )
+      )
 
   private def manager(implicit client: Client[IO]): IO[Unit] =
     updateProcedure
@@ -60,39 +68,58 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val
       .flatMap(_ => manager)
 
   def run: IO[ExitCode] =
-    http.use {client =>
+    http.use { client =>
       NonEmptyList.of(lb.server, manager(client)).parSequence.map(_ => ExitCode.Success)
     }
 
-  def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[Set[Addr]] = IO {
+  def discoverActiveHosts(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[Set[Addr]] =
+    IO {
 
-    val tresholdLevel = init.keys.size / 2
+      val tresholdLevel = init.keys.size / 2
 
-    def isActive(addr: Addr, proof: List[Info]) =
-      init(addr).nonEmpty && proof.count(_.status == NodeState.Ready) > tresholdLevel
+      def isActive(addr: Addr, proof: List[Info]) =
+        init(addr).nonEmpty && proof.count(_.status == NodeState.Ready) > tresholdLevel
 
-    val s : Set[Addr] = init
-      .toList
-      .collect {
-        case Some(el) => el
-      }.flatten.groupBy(_.ip).collect {
-      case (addr: Addr, proof: List[Info]) if isActive(addr, proof) => addr
-    }.toSet
+      val s: Set[Addr] = init.toList
+        .collect {
+          case Some(el) => el
+        }
+        .flatten
+        .groupBy(_.ip)
+        .collect {
+          case (addr: Addr, proof: List[Info]) if isActive(addr, proof) => addr
+        }
+        .toSet
 
-    s
-  }.flatTap(hosts => logger.info(s"Active hosts $hosts"))
+      s
+    }.flatTap(hosts => logger.info(s"Active hosts $hosts"))
 
-  def clusterStatus(hosts: NonEmptySet[Addr])(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
-    IO.apply(logger.info(s"Fetch cluster status from following ${hosts.size} hosts: ${hosts.toList.take(5)}")).flatMap( _ =>
-      hosts.toNonEmptyList
-        .map(addr =>
-          node(addr).getInfo().flatMap(result => logger.debug(s"Node $addr returned $result")
-            .map(_ => addr -> Option(result)))
-            .recoverWith{
-              case error =>
-                logger.info(s"Cannot retrieve cluster status from addr=$addr error=$error")
-                  .map( _ => addr -> Option.empty[List[Info]])
-            } )
-        .parSequence.map(_.toNem))
+  def clusterStatus(
+      hosts: NonEmptySet[Addr]
+  )(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
+    IO.apply(logger.info(s"Fetch cluster status from following ${hosts.size} hosts: ${hosts.toList.take(5)}"))
+      .flatMap(
+        _ =>
+          hosts.toNonEmptyList
+            .map(
+              addr =>
+                node(addr)
+                  .getInfo()
+                  .flatMap(
+                    result =>
+                      logger
+                        .debug(s"Node $addr returned $result")
+                        .map(_ => addr -> Option(result))
+                  )
+                  .recoverWith {
+                    case error =>
+                      logger
+                        .info(s"Cannot retrieve cluster status from addr=$addr error=$error")
+                        .map(_ => addr -> Option.empty[List[Info]])
+                  }
+            )
+            .parSequence
+            .map(_.toNem)
+      )
   }
 }

@@ -20,9 +20,9 @@ object Hosts {
             case addr :: port :: Nil =>
               catching(classOf[UnknownHostException], classOf[NumberFormatException])
                 .either(Addr(InetAddress.getByName(addr), port.toInt))
-                .leftMap{
-                  case _ : NumberFormatException => AddressMalformed(s"$addr:$port")
-                  case _ => HostUnknown(addr)
+                .leftMap {
+                  case _: NumberFormatException => AddressMalformed(s"$addr:$port")
+                  case _                        => HostUnknown(addr)
                 }
                 .toValidatedNel
             case invalid => AddressMalformed(s"${invalid}").invalidNel[Addr]
@@ -33,8 +33,8 @@ object Hosts {
 
   sealed trait ArgumentValidationError
 
-  case object EmptyListOfHosts extends ArgumentValidationError
-  case object EmptyListOfValidHosts extends ArgumentValidationError
-  case class HostUnknown(addr: String) extends ArgumentValidationError
+  case object EmptyListOfHosts              extends ArgumentValidationError
+  case object EmptyListOfValidHosts         extends ArgumentValidationError
+  case class HostUnknown(addr: String)      extends ArgumentValidationError
   case class AddressMalformed(addr: String) extends ArgumentValidationError
 }

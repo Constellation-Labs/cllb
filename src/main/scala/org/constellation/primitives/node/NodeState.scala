@@ -6,5 +6,4 @@ object NodeState extends Enumeration {
   val PendingDownload, DownloadInProgress, DownloadCompleteAwaitingFinalSync, Ready, Leaving, Offline =
     Value
 
-
 }

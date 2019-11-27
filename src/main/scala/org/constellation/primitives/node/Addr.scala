@@ -8,7 +8,7 @@ import io.circe.Decoder
 import pureconfig.ConfigReader
 
 case class Addr(host: InetAddress, port: Int) {
-  @transient val publicPort:Int = port - 1
+  @transient val publicPort: Int = port - 1
 
   override def toString = s"${host.getHostAddress}:${port}"
 }

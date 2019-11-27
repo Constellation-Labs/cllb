@@ -8,5 +8,5 @@ case class Id(hex: String) {
   @transient
   lazy val medium: String = hex.toString.slice(0, 10)
 
-  override def toString =  s"#$short"
+  override def toString = s"#$short"
 }

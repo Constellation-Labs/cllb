@@ -11,17 +11,16 @@ import io.circe._
 import io.circe.generic.semiauto._
 import io.circe._, io.circe.generic.semiauto._
 
-
 import scala.util.control.Exception.catching
 
 case class Info(
-  id: Id,
-  ip: Addr,
-  status: NodeState.State,
-  reputation: Reputation
+    id: Id,
+    ip: Addr,
+    status: NodeState.State,
+    reputation: Reputation
 )
 
-object Info extends Codecs{
+object Info extends Codecs {
 
   implicit val infoCodec: Codec[Info] = deriveCodec[Info]
 }
