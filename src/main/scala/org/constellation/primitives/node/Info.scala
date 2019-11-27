@@ -23,6 +23,5 @@ case class Info(
 
 object Info extends Codecs{
 
-  implicit val infoDecoder: Decoder[Info] = deriveDecoder[Info]
-
+  implicit val infoCodec: Codec[Info] = deriveCodec[Info]
 }

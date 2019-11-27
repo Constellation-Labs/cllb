@@ -59,7 +59,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(implicit val
       .flatMap(_ => IO.sleep(60 seconds))
       .flatMap(_ => manager)
 
-  def run(): IO[ExitCode] =
+  def run: IO[ExitCode] =
     http.use {client =>
       NonEmptyList.of(lb.server, manager(client)).parSequence.map(_ => ExitCode.Success)
     }

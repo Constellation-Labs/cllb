@@ -9,6 +9,17 @@ scalaVersion := "2.13.1"
 resolvers += Resolver.sonatypeRepo("snapshots")
 
 val catsVersion = "2.0.0"
+val circeVersion = "0.12.3"
+val http4sVersion = "0.21.0-M5"
+
+libraryDependencies ++= Seq(
+  "io.chrisdavenport" %% "log4cats-slf4j" % "1.0.1",
+  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.11.661",
+  "ch.qos.logback" % "logback-classic" % "1.2.3",
+  "com.github.cb372" %% "scalacache-guava" % "0.28.0",
+  "com.github.cb372" %% "scalacache-cats-effect" % "0.28.0",
+  "com.github.pureconfig" %% "pureconfig" % "0.12.1"
+)
 
 libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-effect",
@@ -16,22 +27,10 @@ libraryDependencies ++= Seq(
 ).map(_ % catsVersion)
 
 libraryDependencies ++= Seq(
-  "io.chrisdavenport" %% "log4cats-slf4j" % "1.0.1",
-  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.11.661",
-  "org.scalatest" %% "scalatest" % "3.0.8" % "test",
-  "org.scalactic" %% "scalactic" % "3.0.8" % "test",
-  "org.scalamock" %% "scalamock" % "4.4.0" % "test",
-)
-
-val circeVersion = "0.12.3"
-
-libraryDependencies ++= Seq(
   "io.circe" %% "circe-core",
   "io.circe" %% "circe-generic",
   "io.circe" %% "circe-parser"
 ).map(_ % circeVersion)
-
-val http4sVersion = "0.21.0-M5"
 
 libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-blaze-server",
@@ -41,11 +40,23 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-dsl",
 ).map(_ % http4sVersion)
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
+libraryDependencies ++= Seq(
+  "org.scalatest" %% "scalatest" % "3.0.8",
+  "org.scalactic" %% "scalactic" % "3.0.8",
+  "org.scalamock" %% "scalamock" % "4.4.0",
+).map(_ % "it,test")
 
-libraryDependencies += "com.github.cb372" %% "scalacache-guava" % "0.28.0"
-libraryDependencies += "com.github.cb372" %% "scalacache-cats-effect" % "0.28.0"
-libraryDependencies += "com.github.pureconfig" %% "pureconfig" % "0.12.1"
+//enablePlugins(GatlingPlugin)
+//scalacOptions := Seq(
+//  "-encoding", "UTF-8", "-target:jvm-1.8", "-deprecation",
+//  "-feature", "-unchecked", "-language:implicitConversions", "-language:postfixOps")
+//
+//libraryDependencies += "io.gatling.highcharts" % "gatling-charts-highcharts" % "3.3.1" % "test,it"
+//libraryDependencies += "io.gatling"            % "gatling-test-framework"    % "3.3.1" % "test,it"
+
+configs(IntegrationTest)
+
+Defaults.itSettings
 
 fork in run := true
 

@@ -36,7 +36,7 @@ object NetworkLoadbalancer extends IOApp {
         .fold(
           _.map(_ => ExitCode.Error),
           {
-            case (hosts, config) => new Manager(hosts, config).run()
+            case (hosts, config) => new Manager(hosts, config).run
           }
         )
   }

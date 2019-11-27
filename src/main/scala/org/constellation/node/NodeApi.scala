@@ -4,7 +4,7 @@ import org.constellation.primitives.node.{Addr, Info}
 import org.http4s.Uri
 import org.http4s.Uri.{Authority, RegName, Scheme}
 import org.http4s.client.blaze._
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import io.circe.generic.auto._
 import org.http4s.circe._
 import org.http4s.client.Client
