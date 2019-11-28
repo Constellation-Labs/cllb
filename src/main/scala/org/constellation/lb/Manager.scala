@@ -3,7 +3,7 @@ package org.constellation.lb
 import cats.data.NonEmptyList
 import cats.effect.{ContextShift, ExitCode, IO, Timer}
 import org.constellation.node.RestNodeApi
-import org.constellation.primitives.node.{Addr, Info, NodeState}
+import org.constellation.primitives.node.{Addr, AddrOrdering, Info, NodeState}
 import org.http4s.client.blaze.BlazeClientBuilder
 import cats._
 import cats.data._
@@ -15,6 +15,7 @@ import org.constellation.http.Loadbalancer
 import org.constellation.LoadbalancerConfig
 import org.http4s.client.Client
 
+import scala.collection.immutable.SortedSet
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.concurrent.ExecutionContext.global
@@ -22,7 +23,7 @@ import scala.concurrent.ExecutionContext.global
 class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     implicit val C: ContextShift[IO],
     val t: Timer[IO]
-) {
+) extends AddrOrdering {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   private val http = BlazeClientBuilder[IO](global)
@@ -48,10 +49,14 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       .flatTap(hosts => logger.info(s"Init cluster discovery from ${hosts.keys}"))
       .flatMap(
         hosts =>
-          clusterStatus(hosts.keys)(client)
+          getClusterInfo(hosts.keys)(client)
+          .flatMap(currentStatus =>
+            NonEmptySet.fromSet(findNewHosts(currentStatus)).map(getClusterInfo(_)
+                  .map(newHostsStatus => currentStatus ++ newHostsStatus))
+                  .getOrElse(IO.pure(currentStatus)))
             .flatMap(
               status =>
-                discoverCluster(status).flatMap {
+                buildClusterStatus(status).flatMap {
                   case (activeHosts, inactiveHosts) =>
                   val clusterHosts = (activeHosts ++ inactiveHosts) // TODO: Add Eviction of inactive hosts
                     .filterNot(addr => status.contains(addr))
@@ -73,37 +78,37 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       NonEmptyList.of(lb.server, manager(client)).parSequence.map(_ => ExitCode.Success)
     }
 
-  def discoverCluster(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[(Set[Addr], Set[Addr])] = {
+  def findNewHosts(clusterInfo: NonEmptyMap[Addr, Option[List[Info]]]): SortedSet[Addr] =
+    SortedSet[Addr]() ++ clusterInfo.toNel.foldLeft(List.empty[Addr]) (  (acc, bcc) => bcc match {
+      case (_, Some(hosts: List[Info])) => acc ++ hosts.map(_.ip).filterNot(clusterInfo(_).isDefined)
+    })
+
+  def buildClusterStatus(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[(Set[Addr], Set[Addr])] = {
     val tresholdLevel = init.keys.size / 2
 
     def isActive(addr: Addr, proof: List[Info]) =
       init(addr).nonEmpty && proof.count(_.status == NodeState.Ready) > tresholdLevel
 
-
-
       IO {
 
-
-
-
-      val (active, other) = init.toNel
-         .collect {
-           case (_, Some(el)) => el
-         }
-         .flatten
-         .groupBy(_.ip)
-         .toList
-         .partition {
+        val (active, other) = init.toNel
+          .collect {
+            case (_, Some(el)) => el
+          }
+          .flatten
+          .groupBy(_.ip)
+          .toList
+          .partition {
           case (addr: Addr, proof: List[Info]) => isActive(addr, proof)
         }
 
       active.map(_._1).toSet -> other.map(_._1).toSet
     }.flatTap{
-      case (active, other)  => logger.info(s"Discovered ${active} hosts and ${other} not ready")
+      case (active, other)  => logger.info(s"As a result of status analysis we have ${active} hosts and ${other} not ready")
     }
   }
 
-  def clusterStatus(
+  def getClusterInfo(
       hosts: NonEmptySet[Addr]
   )(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
     IO.apply(logger.info(s"Fetch cluster status from following ${hosts.size} hosts: ${hosts.toList.take(5)}"))
@@ -121,7 +126,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
                   .recoverWith {
                     case error =>
                       logger
-                        .info(s"Cannot retrieve cluster status from addr=$addr error=$error")
+                        .info(s"Cannot retrieve cluster info from addr=$addr error=$error")
                         .map(_ => addr -> Option.empty[List[Info]])
                   }
             )

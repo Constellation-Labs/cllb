@@ -13,17 +13,21 @@ case class Addr(host: InetAddress, port: Int) {
   override def toString = s"${host.getHostAddress}:${port}"
 }
 
-object Addr extends Codecs {
-
-  implicit val addrDecoder: Decoder[Addr] = deriveDecoder[Addr]
-
-  implicit val o = new Order[Addr] {
+trait AddrOrdering {
+  implicit val order: Order[Addr] = new Order[Addr] {
     override def compare(x: Addr, y: Addr): Int =
       x.host.toString.compareTo(y.host.toString) match {
         case 0 => x.port.compareTo(y.port)
         case o => o
       }
   }
+  implicit val ordering: Ordering[Addr] = order.toOrdering
+}
+
+object Addr extends Codecs with AddrOrdering{
+
+  implicit val addrDecoder: Decoder[Addr] = deriveDecoder[Addr]
+
 
   implicit val inetAddressRader: ConfigReader[InetAddress] = ConfigReader[String].map(InetAddress.getByName)
 }
