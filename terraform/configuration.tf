@@ -1,7 +1,7 @@
-
 resource "aws_s3_bucket" "cl_lb_config" {
   bucket        = "cl-lb-config"
   force_destroy = true
+  acl    = "private"
 
   policy = <<POLICY
 {
@@ -15,11 +15,15 @@ resource "aws_s3_bucket" "cl_lb_config" {
       ],
       "Effect": "Allow",
       "Resource": "arn:aws:s3:::cl-lb-config/application.conf",
-      "Principal": "*"
+      "Principal": {
+        "AWS": "${aws_iam_role.ecs_task_role.arn}"
+      }
     }
   ]
 }
 POLICY
+
+  depends_on = [aws_iam_role.ecs_task_role]
 }
 
 resource "aws_s3_bucket_object" "application-conf" {

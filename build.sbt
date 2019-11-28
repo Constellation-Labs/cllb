@@ -68,9 +68,10 @@ dockerExposedPorts := Seq(9000)
 
 dockerCommands ++= Seq(
           Cmd("USER", "root"),
-          Cmd("RUN", "apk add --update python python-dev py-pip build-base && " +
-                      "pip install awscli --upgrade" +
-                      "&& apk --purge -v del py-pip  && rm -rf /var/cache/apk/*"),
+          Cmd("RUN", """apk add --update python python-dev py-pip build-base && \
+                       | pip install awscli --upgrade &&  \
+                       | apk --purge -v del py-pip  && \
+                       | rm -rf /var/cache/apk/*""".stripMargin),
           ) ++ dockerUsername.value.map(Cmd("USER", _)).toSeq
 
 javaOptions in Universal ++= Seq("-Dconfig.file=/tmp/application.conf")

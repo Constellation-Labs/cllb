@@ -57,8 +57,9 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
   private val util = HttpRoutes.of[IO] {
     case GET -> Root / "health" =>
       upstream.get
-        .flatTap(l => logger.info(s"I understand Im healthy cause my upstream is $l"))
-        .flatMap(l => Ok(s"${l.size}"))
+        .map(_.size)
+        .flatTap(size => logger.info(s"I understand Im healthy, my upstream size is now $size"))
+        .flatMap(size => Ok(s"$size"))
   }
 
   private def proxy(http: Client[IO]) =
