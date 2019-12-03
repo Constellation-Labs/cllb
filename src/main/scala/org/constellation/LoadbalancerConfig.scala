@@ -10,5 +10,5 @@ case class LoadbalancerConfig(
   `if`: String,
   port: Int,
   networkNodes: Set[Addr],
-  credentials: Option[BasicCredentials]
+  networkCredentials: Option[BasicCredentials]
 )

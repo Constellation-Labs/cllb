@@ -35,7 +35,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
   private lazy val hostsRef =
     Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
 
-  def node(addr: Addr)(implicit http: Client[IO]) = new RestNodeApi(addr, config.credentials)
+  def node(addr: Addr)(implicit http: Client[IO]) = new RestNodeApi(addr, config.networkCredentials)
 
   private val lb = new Loadbalancer(config.port, config.`if`)
 
@@ -79,8 +79,9 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     }
 
   def findNewHosts(clusterInfo: NonEmptyMap[Addr, Option[List[Info]]]): SortedSet[Addr] =
-    SortedSet[Addr]() ++ clusterInfo.toNel.foldLeft(List.empty[Addr]) (  (acc, bcc) => bcc match {
+    SortedSet[Addr]() ++ clusterInfo.toNel.foldLeft(List.empty[Addr]) ( (acc, bcc) => bcc match {
       case (_, Some(hosts: List[Info])) => acc ++ hosts.map(_.ip).filterNot(clusterInfo(_).isDefined)
+      case _ => acc
     })
 
   def buildClusterStatus(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[(Set[Addr], Set[Addr])] = {
@@ -90,7 +91,6 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       init(addr).nonEmpty && proof.count(_.status == NodeState.Ready) > tresholdLevel
 
       IO {
-
         val (active, other) = init.toNel
           .collect {
             case (_, Some(el)) => el
