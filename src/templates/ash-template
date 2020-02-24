@@ -87,7 +87,7 @@ process_args () {
   fi
 }
 
-aws s3 cp s3://cl-lb-config/application.conf /tmp/application.conf
+aws s3 cp s3://$CL_BUCKET/$CL_APP_CONF /tmp/application.conf
 
 real_script_path="$(realpath "$0")"
 app_home="$(realpath "$(dirname "$real_script_path")")"

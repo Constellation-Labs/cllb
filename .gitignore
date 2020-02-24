@@ -1,8 +1,9 @@
 /target
 /project/target
 /project/project/target
-/.terraform
 *.tfstate
 *.tfstate.backup
 .terraform.tfstate.lock.info
-
+.idea/
+*.terraform/
+*.tfvars

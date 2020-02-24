@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "cl_lb_config" {
-  bucket        = "cl-lb-config"
+  bucket        = "constellationlabs-lb-config-${var.env}"
   force_destroy = true
   acl    = "private"
 
@@ -14,7 +14,7 @@ resource "aws_s3_bucket" "cl_lb_config" {
         "s3:GetObject"
       ],
       "Effect": "Allow",
-      "Resource": "arn:aws:s3:::cl-lb-config/application.conf",
+      "Resource": "arn:aws:s3:::constellationlabs-lb-config-${var.env}/application-${var.env}.conf",
       "Principal": {
         "AWS": "${aws_iam_role.ecs_task_role.arn}"
       }
@@ -24,14 +24,19 @@ resource "aws_s3_bucket" "cl_lb_config" {
 POLICY
 
   depends_on = [aws_iam_role.ecs_task_role]
+
+  tags = {
+    Name = "cl-lb_config_${var.env}"
+    Env = var.env
+  }
 }
 
 resource "aws_s3_bucket_object" "application-conf" {
-  bucket = "cl-lb-config"
-  key    = "application.conf"
-  source = "./terraform/templates/application.conf"
+  bucket = "constellationlabs-lb-config-${var.env}"
+  key    = "application-${var.env}.conf"
+  source = "templates/application.conf"
 
-  etag = filemd5("./terraform/templates/application.conf")
+  etag = filemd5("templates/application.conf")
 
   depends_on = [aws_s3_bucket.cl_lb_config]
 }

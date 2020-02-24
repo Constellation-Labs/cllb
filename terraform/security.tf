@@ -2,7 +2,7 @@
 
 # ALB Security Group: Edit to restrict access to the application
 resource "aws_security_group" "lb" {
-  name        = "cl-lb-security-group"
+  name        = "cl-lb_security-group_${var.env}"
   description = "controls access to the loadbalancer"
   vpc_id      = aws_vpc.main.id
 
@@ -19,11 +19,16 @@ resource "aws_security_group" "lb" {
     to_port     = 0
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "cl-lb_sg_${var.env}"
+    Env = var.env
+  }
 }
 
 # Traffic to the ECS cluster should only come from the ALB
 resource "aws_security_group" "ecs_tasks" {
-  name        = "cl-lb-ecs-tasks-security-group"
+  name        = "cl-lb_ecs-tasks-security-group_${var.env}"
   description = "allow inbound access from the ALB only"
   vpc_id      = aws_vpc.main.id
 
@@ -39,5 +44,9 @@ resource "aws_security_group" "ecs_tasks" {
     from_port   = 0
     to_port     = 0
     cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    Name = "cl-lb_sg-alb_${var.env}"
+    Env = var.env
   }
 }

@@ -5,6 +5,11 @@ variable "aws_region" {
   default     = "us-west-1"
 }
 
+variable "env" {
+  description = "Environment which the load balancer works in"
+  default     = "dev"
+}
+
 variable "ecs_task_execution_role_name" {
   description = "ECS task execution role name"
   default = "cl-lb"
@@ -32,7 +37,7 @@ variable "az_count" {
 
 variable "app_image" {
   description = "Docker image to run in the ECS cluster"
-  default     = "abankowski/cluster-loadbalancer:0.1.1"
+  default     = "constellationprotocol/load-balancer:0.1.1"
 }
 
 variable "app_port" {

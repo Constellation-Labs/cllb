@@ -1,23 +1,31 @@
 # ecs.tf
 
 resource "aws_ecs_cluster" "main" {
-  name = "cl-lb-cluster"
+  name = "cl-lb_cluster_${var.env}"
+
+  tags = {
+    Name = "cl-lb_cluster_${var.env}"
+    Env = var.env
+  }
 }
 
 data "template_file" "cl_lb_app" {
-  template = file("./terraform/templates/cl_lb_app.json.tpl")
+  template = file("templates/cl_lb_app.json.tpl")
 
   vars = {
     app_image      = var.app_image
     app_port       = var.app_port
+    app_bucket     = aws_s3_bucket.cl_lb_config.bucket
+    app_conf_file  = aws_s3_bucket_object.application-conf.key
     fargate_cpu    = var.fargate_cpu
     fargate_memory = var.fargate_memory
     aws_region     = var.aws_region
+    env            = var.env
   }
 }
 
 resource "aws_ecs_task_definition" "app" {
-  family                   = "cl-lb-app-task"
+  family                   = "cl-lb_app-task_${var.env}"
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
   network_mode             = "awsvpc"
@@ -28,7 +36,7 @@ resource "aws_ecs_task_definition" "app" {
 }
 
 resource "aws_ecs_service" "main" {
-  name            = "cl-lb-service"
+  name            = "cl-lb_service_${var.env}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.app_count
@@ -42,7 +50,7 @@ resource "aws_ecs_service" "main" {
 
   load_balancer {
     target_group_arn = aws_alb_target_group.app.id
-    container_name   = "cl-lb-app"
+    container_name   = "cl-lb_app_${var.env}"
     container_port   = var.app_port
   }
 
