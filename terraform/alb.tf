@@ -1,13 +1,18 @@
 # alb.tf
 
 resource "aws_alb" "main" {
-  name            = "cl-lb"
+  name            = "cl-lb-alb-${var.env}"
   subnets         = aws_subnet.public.*.id
   security_groups = [aws_security_group.lb.id]
+
+  tags = {
+    Name = "cl-lb_alb_${var.env}"
+    Env = var.env
+  }
 }
 
 resource "aws_alb_target_group" "app" {
-  name        = "cb-target-group"
+  name        = "cl-lb-cb-target-group-${var.env}"
   port        = 9000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
