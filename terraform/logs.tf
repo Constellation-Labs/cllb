@@ -1,15 +1,19 @@
 # logs.tf
 data "aws_caller_identity" "current" {}
 
+locals {
+  cloudtrail_bucket_name = terraform.workspace == "mainnet" ? "constellationlabs-lb-cloudtrail-${var.env}" : "constellationlabs-lb-dev-cloudtrail-${var.env}"
+}
+
 resource "aws_cloudtrail" "cl_lb" {
-  name                          = "constellationlabs-lb-cloudtrail-${var.env}"
+  name                          = local.cloudtrail_bucket_name
   s3_bucket_name                = aws_s3_bucket.cl_lb.id
   s3_key_prefix                 = "prefix"
   include_global_service_events = false
 }
 
 resource "aws_s3_bucket" "cl_lb" {
-  bucket        = "constellationlabs-lb-cloudtrail-${var.env}"
+  bucket        = local.cloudtrail_bucket_name
   force_destroy = true
 
   policy = <<POLICY
@@ -23,7 +27,7 @@ resource "aws_s3_bucket" "cl_lb" {
               "Service": "cloudtrail.amazonaws.com"
             },
             "Action": "s3:GetBucketAcl",
-            "Resource": "arn:aws:s3:::constellationlabs-lb-cloudtrail-${var.env}"
+            "Resource": "arn:aws:s3:::${local.cloudtrail_bucket_name}"
         },
         {
             "Sid": "AWSCloudTrailWrite",
@@ -32,7 +36,7 @@ resource "aws_s3_bucket" "cl_lb" {
               "Service": "cloudtrail.amazonaws.com"
             },
             "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::constellationlabs-lb-cloudtrail-${var.env}/prefix/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+            "Resource": "arn:aws:s3:::${local.cloudtrail_bucket_name}/prefix/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
             "Condition": {
                 "StringEquals": {
                     "s3:x-amz-acl": "bucket-owner-full-control"

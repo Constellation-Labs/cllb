@@ -1,5 +1,9 @@
+locals {
+  config_bucket_name = terraform.workspace == "mainnet" ? "constellationlabs-lb-config-${var.env}" : "constellationlabs-lb-dev-config-${var.env}"
+}
+
 resource "aws_s3_bucket" "cl_lb_config" {
-  bucket        = "constellationlabs-lb-config-${var.env}"
+  bucket        = local.config_bucket_name
   force_destroy = true
   acl    = "private"
 
@@ -14,7 +18,7 @@ resource "aws_s3_bucket" "cl_lb_config" {
         "s3:GetObject"
       ],
       "Effect": "Allow",
-      "Resource": "arn:aws:s3:::constellationlabs-lb-config-${var.env}/application-${var.env}.conf",
+      "Resource": "arn:aws:s3:::${local.config_bucket_name}/application-${var.env}.conf",
       "Principal": {
         "AWS": "${aws_iam_role.ecs_task_role.arn}"
       }
@@ -32,7 +36,7 @@ POLICY
 }
 
 resource "aws_s3_bucket_object" "application-conf" {
-  bucket = "constellationlabs-lb-config-${var.env}"
+  bucket = local.config_bucket_name
   key    = "application-${var.env}.conf"
   source = "templates/application.conf"
 

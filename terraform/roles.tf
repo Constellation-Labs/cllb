@@ -39,8 +39,8 @@ resource "aws_iam_policy" "ecs_task_s3_policy" {
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
-              "arn:aws:s3:::constellationlabs-lb-config-${var.env}",
-              "arn:aws:s3:::constellationlabs-lb-config-${var.env}/*"
+              "arn:aws:s3:::${local.config_bucket_name}",
+              "arn:aws:s3:::${local.config_bucket_name}/*"
             ]
         }
     ]

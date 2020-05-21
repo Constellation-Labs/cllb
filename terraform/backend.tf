@@ -2,7 +2,7 @@
 
 terraform {
   backend "s3" {
-    bucket = "constellationlabs-terraform"
+    bucket = "constellationlabs-tf"
     key = "load-balancer"
     region = "us-west-1"
   }
