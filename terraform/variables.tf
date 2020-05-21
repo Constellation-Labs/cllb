@@ -37,7 +37,7 @@ variable "az_count" {
 
 variable "app_image" {
   description = "Docker image to run in the ECS cluster"
-  default     = "constellationprotocol/load-balancer:0.1.1"
+  default     = "constellationprotocol/load-balancer:0.1.2"
 }
 
 variable "app_port" {
