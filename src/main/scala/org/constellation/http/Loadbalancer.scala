@@ -13,7 +13,7 @@ import org.http4s._
 import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.Uri.{Authority, RegName}
-import cats.syntax.all._
+import cats.implicits._
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.chrisdavenport.log4cats.Logger
 import cats.effect.IO
@@ -30,7 +30,7 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
   private implicit val cs    = IO.contextShift(exc)
   private implicit val timer = IO.timer(exc)
 
-  private val http = BlazeClientBuilder[IO](exc).resource
+  private val http = BlazeClientBuilder[IO](exc).resource.map(_.toHttpApp)
 
   private val upstreamIterator = Ref.unsafe[IO, Iterator[Addr]](List.empty[Addr].iterator)
 
@@ -62,8 +62,8 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
         .flatMap(size => Ok(s"$size"))
   }
 
-  private def proxy(http: Client[IO]) =
-    HttpService[IO](
+  private def proxy(http: HttpApp[IO]) =
+    HttpRoutes.of[IO](
       req =>
         resolveUpstream(req)
           .flatTap(_.map(sessions.memoizeUpstream(req, _)).getOrElse(IO.unit))
@@ -83,7 +83,7 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
               )
 
               http
-                .fetch[Response[IO]](req.withUri(uri))(resp => IO.pure(resp))
+                .run(req.withUri(uri))
                 .flatTap(_ => logger.info(s"Upstream host=${upstreamHost} handled request ${req.method} ${req.uri}"))
           }
     )
