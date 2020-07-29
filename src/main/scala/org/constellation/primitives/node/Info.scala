@@ -17,7 +17,8 @@ case class Info(
     id: Id,
     ip: Addr,
     status: NodeState.State,
-    reputation: Reputation
+    reputation: Reputation,
+    alias: String
 )
 
 object Info extends Codecs {
