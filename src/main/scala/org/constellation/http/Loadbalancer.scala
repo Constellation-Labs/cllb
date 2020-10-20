@@ -1,27 +1,28 @@
 package org.constellation.http
 
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.Executors
+import org.http4s.circe.CirceEntityEncoder._
 
+import cats.data.{Kleisli, OptionT}
 import cats.effect.concurrent.Ref
-import org.constellation.primitives.node.Addr
-import org.http4s.server.blaze.BlazeBuilder
-import org.http4s.HttpService
+import org.http4s.headers.`Retry-After`
+import cats.effect.IO
+import cats.implicits._
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
+import org.constellation.primitives.node.{Addr, ErrorBody}
+import org.http4s.Uri.{Authority, RegName}
+import org.http4s._
 import org.http4s.client.blaze.BlazeClientBuilder
+import org.http4s.dsl.io._
+import org.http4s.server.blaze.BlazeBuilder
 
 import scala.concurrent.ExecutionContext
-import org.http4s._
-import org.http4s.dsl.io._
-import org.http4s.implicits._
-import org.http4s.Uri.{Authority, RegName}
-import cats.implicits._
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import io.chrisdavenport.log4cats.Logger
-import cats.effect.IO
-import org.http4s.client.Client
-
 import scala.language.postfixOps
 
-class Loadbalancer(port: Int = 9000, host: String = "localhost") {
+class Loadbalancer(port: Int = 9000, host: String = "localhost", retryAfterMinutes: Int) {
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   private val upstream: Ref[IO, List[Addr]] = Ref.unsafe[IO, List[Addr]](List.empty[Addr])
@@ -34,7 +35,26 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
 
   private val upstreamIterator = Ref.unsafe[IO, Iterator[Addr]](List.empty[Addr].iterator)
 
+  private val redirectToMaintenance: Ref[IO, Boolean] = Ref.unsafe(false)
+
   private val sessions = new SessionCache()
+
+  def shouldRedirectToMaintenance: IO[Boolean] =
+    redirectToMaintenance.get
+
+  def enableRedirectingToMaintenance: IO[Unit] =
+    redirectToMaintenance.modify(_ => (true, ()))
+
+  def disableRedirectingToMaintenance: IO[Unit] =
+    redirectToMaintenance.modify(_ => (false, ()))
+
+  def reset: IO[Unit] =
+    for {
+      _ <- upstream.modify(_ => (List.empty[Addr], ()))
+      _ <- upstreamIterator.modify(_ => (List.empty[Addr].iterator, ()))
+      _ <- sessions.clear()
+      _ <- logger.info("Performed load balancer reset. Cleared sessions and upstream.")
+    } yield ()
 
   private def resolveUpstream(req: Request[IO]): IO[Option[Addr]] =
     upstream.get.flatMap(
@@ -60,6 +80,23 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
         .map(_.size)
         .flatTap(size => logger.info(s"I understand Im healthy, my upstream size is now $size"))
         .flatMap(size => Ok(s"$size"))
+  }
+
+  private def maintenance(routes: HttpRoutes[IO]): HttpRoutes[IO] = Kleisli { req: Request[IO] =>
+    for {
+      shouldReturnServiceUnavailable <- OptionT.liftF(shouldRedirectToMaintenance)
+      res <- if (shouldReturnServiceUnavailable) {
+        val retryAfterTime = HttpDate.unsafeFromInstant(Instant.now.plus(retryAfterMinutes, ChronoUnit.MINUTES))
+        val maintenanceRes = Response[IO]()
+          .withStatus(Status.ServiceUnavailable)
+          .withHeaders(Headers.of(`Retry-After`(retryAfterTime)))
+          .withEntity(ErrorBody("Load balancer is currently under a maintenance mode due to cluster upgrade."))
+
+        OptionT.pure[IO](maintenanceRes)
+      } else {
+        routes(req)
+      }
+    } yield res
   }
 
   private def proxy(http: HttpApp[IO]) =
@@ -107,7 +144,7 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost") {
               BlazeBuilder[IO]
                 .bindHttp(port, host)
                 .mountService(util, "/utils")
-                .mountService(proxy(client), "/")
+                .mountService(maintenance(proxy(client)), "/")
                 .serve
                 .compile
                 .drain

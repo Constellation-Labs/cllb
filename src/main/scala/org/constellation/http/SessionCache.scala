@@ -24,4 +24,7 @@ class SessionCache {
       .map(clientUpstreamCache.doGet(_))
       .getOrElse(IO.pure(Option.empty[Addr]))
       .map(_.filter(addr => validHosts.contains(addr)))
+
+  def clear(): IO[Unit] =
+    clientUpstreamCache.doRemoveAll().flatMap(_ => IO.unit)
 }
