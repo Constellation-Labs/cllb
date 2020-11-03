@@ -126,15 +126,20 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       )
     } yield ()
 
-  val settingsServer: IO[Unit] =
+  private val settingsHealth = HttpRoutes.of[IO] {
+    case GET -> Root / "health" => Ok()
+  }
+
+  private val settingsServer: IO[Unit] =
     logger
-      .info(s"Setup Manager instance on ${config.`if`}:${config.settingsPort}")
+      .info(s"Setup Settings instance on ${config.`if`}:${config.settingsPort}")
       .flatMap(
         _ =>
           http.use(
             _ =>
               BlazeBuilder[IO]
                 .bindHttp(config.settingsPort, config.`if`)
+                .mountService(settingsHealth, "/utils")
                 .mountService(settingsRoutes, "/settings")
                 .serve
                 .compile
