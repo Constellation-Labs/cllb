@@ -15,6 +15,7 @@ data "template_file" "cl_lb_app" {
   vars = {
     app_image      = var.app_image
     app_port       = var.app_port
+    settings_port  = var.settings_port
     app_bucket     = aws_s3_bucket.cl_lb_config.bucket
     app_conf_file  = aws_s3_bucket_object.application-conf.key
     fargate_cpu    = var.fargate_cpu
@@ -52,6 +53,12 @@ resource "aws_ecs_service" "main" {
     target_group_arn = aws_alb_target_group.app.id
     container_name   = "cl-lb_app_${var.env}"
     container_port   = var.app_port
+  }
+
+  load_balancer {
+    target_group_arn = aws_alb_target_group.settings.id
+    container_name   = "cl-lb_app_${var.env}"
+    container_port   = var.settings_port
   }
 
   depends_on = [aws_alb_listener.front_end, aws_iam_role_policy_attachment.ecs_task_execution_role, aws_iam_role_policy_attachment.ecs_task_role]
