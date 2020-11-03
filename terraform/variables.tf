@@ -54,6 +54,15 @@ variable "health_check_path" {
   default = "/utils/health"
 }
 
+variable "settings_port" {
+  description = "Port exposed for settings"
+  default     = 9001
+}
+
+variable "genesis_ip" {
+  description = "IP allowed to access settings"
+}
+
 variable "fargate_cpu" {
   description = "Fargate instance CPU units to provision (1 vCPU = 1024 CPU units)"
   default     = "2048"

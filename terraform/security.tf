@@ -13,6 +13,13 @@ resource "aws_security_group" "lb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    protocol    = "tcp"
+    from_port   = var.settings_port
+    to_port     = var.settings_port
+    cidr_blocks = [var.genesis_ip]
+  }
+
   egress {
     protocol    = "-1"
     from_port   = 0
