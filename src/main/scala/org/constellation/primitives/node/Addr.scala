@@ -1,11 +1,12 @@
 package org.constellation.primitives.node
 
-import java.net.InetAddress
-
+import java.net.{InetAddress, UnknownHostException}
 import cats.Order
 import io.circe.generic.semiauto.deriveDecoder
 import io.circe.Decoder
 import pureconfig.ConfigReader
+
+import scala.util.control.Exception.catching
 
 case class Addr(host: InetAddress, port: Int) {
   @transient val publicPort: Int = port - 1
@@ -24,10 +25,24 @@ trait AddrOrdering {
   implicit val ordering: Ordering[Addr] = order.toOrdering
 }
 
-object Addr extends Codecs with AddrOrdering{
+object Addr extends Codecs with AddrOrdering {
 
   implicit val addrDecoder: Decoder[Addr] = deriveDecoder[Addr]
 
+  implicit val inetAddressReader: ConfigReader[InetAddress] = ConfigReader[String].map(InetAddress.getByName)
 
-  implicit val inetAddressRader: ConfigReader[InetAddress] = ConfigReader[String].map(InetAddress.getByName)
+  def unapply(in: String): Option[Addr] = {
+    val addr = in.takeWhile(_ != ':')
+
+    Option(in.drop(addr.length + 1))
+      .filter(_.nonEmpty)
+      .map(_.toIntOption)
+      .getOrElse(Option(9001))
+      .flatMap(
+        port =>
+          catching(classOf[UnknownHostException])
+            .opt(InetAddress.getByName(addr))
+            .map(apply(_, port))
+      )
+  }
 }

@@ -24,7 +24,8 @@ class RestNodeApi(node: Addr, identity: Option[BasicCredentials])(implicit http:
 
   private val getInfoRequest = Request[IO](
     uri = baseUri.withPath("/cluster/info"),
-    headers = identity.map(creds => Headers.of(Authorization(creds))).getOrElse(Headers.empty))
+    headers = identity.map(creds => Headers.of(Authorization(creds))).getOrElse(Headers.empty)
+  )
 
   def getInfo: IO[List[Info]] =
     http.expect(getInfoRequest)(jsonOf[IO, List[Info]])
