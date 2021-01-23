@@ -126,8 +126,23 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       )
     } yield ()
 
-  private val settingsHealth = HttpRoutes.of[IO] {
+  private val utilsHealth = HttpRoutes.of[IO] {
     case GET -> Root / "health" => Ok()
+    case GET -> Root / "health" / addrStr =>
+      Addr
+        .unapply(addrStr)
+        .map { addr =>
+          hostsRef.get.flatMap(
+            addrs =>
+              addrs(addr)
+                .map {
+                  case None    => NoContent()
+                  case Some(_) => Ok()
+                }
+                .getOrElse(NotFound())
+          )
+        }
+        .getOrElse(BadRequest())
   }
 
   private val settingsServer: IO[Unit] =
@@ -139,7 +154,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
             _ =>
               BlazeBuilder[IO]
                 .bindHttp(config.settingsPort, config.`if`)
-                .mountService(settingsHealth, "/utils")
+                .mountService(utilsHealth, "/utils")
                 .mountService(settingsRoutes, "/settings")
                 .serve
                 .compile

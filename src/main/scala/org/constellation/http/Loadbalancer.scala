@@ -80,6 +80,17 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost", retryAfterMinut
         .map(_.size)
         .flatTap(size => logger.info(s"I understand Im healthy, my upstream size is now $size"))
         .flatMap(size => Ok(s"$size"))
+    case GET -> Root / "health" / addrStr =>
+      Addr
+        .unapply(addrStr)
+        .map { addr =>
+          upstream.get.flatMap(
+            _.find(_ == addr)
+              .map(_ => NoContent())
+              .getOrElse(NotFound())
+          )
+        }
+        .getOrElse(BadRequest())
   }
 
   private def maintenance(routes: HttpRoutes[IO]): HttpRoutes[IO] = Kleisli { req: Request[IO] =>

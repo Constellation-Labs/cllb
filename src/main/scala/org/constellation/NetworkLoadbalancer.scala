@@ -35,7 +35,7 @@ object NetworkLoadbalancer extends IOApp {
       )
       .flatMap {
         case Some(context) => Right(context)
-        case _             => Left(logger.error("The list of inital hosts is empty, provide via config or commandline"))
+        case _             => Left(logger.error("The list of initial hosts is empty, provide via config or commandline"))
       }
       .fold(
         _.map(_ => ExitCode.Error), {
