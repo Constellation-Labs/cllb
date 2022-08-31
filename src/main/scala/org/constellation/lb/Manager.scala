@@ -173,7 +173,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     SortedSet[Addr]() ++ clusterInfo.toNel.foldLeft(List.empty[Addr])(
       (acc, bcc) =>
         bcc match {
-          case (_, Some(hosts: List[Info])) => acc ++ hosts.map(_.ip).filterNot(clusterInfo(_).isDefined)
+          case (_, Some(hosts: List[Info])) => acc ++ hosts.map(n => Addr(n.ip, n.publicPort)).filterNot(clusterInfo(_).isDefined)
           case _                            => acc
         }
     )
@@ -182,7 +182,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     val tresholdLevel = init.keys.size / 2
 
     def isActive(addr: Addr, proof: List[Info]) =
-      init(addr).nonEmpty && proof.count(_.status == NodeState.Ready) > tresholdLevel
+      init(addr).nonEmpty && proof.count(_.state == NodeState.Ready) > tresholdLevel
 
     IO {
       val (active, other) = init.toNel
@@ -190,7 +190,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
           case (_, Some(el)) => el
         }
         .flatten
-        .groupBy(_.ip)
+        .groupBy(n => Addr(n.ip, n.publicPort))
         .toList
         .partition {
           case (addr: Addr, proof: List[Info]) => isActive(addr, proof)

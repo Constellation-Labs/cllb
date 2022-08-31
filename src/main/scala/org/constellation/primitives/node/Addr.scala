@@ -8,17 +8,15 @@ import pureconfig.ConfigReader
 
 import scala.util.control.Exception.catching
 
-case class Addr(host: InetAddress, port: Int) {
-  @transient val publicPort: Int = port - 1
-
-  override def toString = s"${host.getHostAddress}:${port}"
+case class Addr(host: InetAddress, publicPort: Int) {
+  override def toString = s"${host.getHostAddress}:${publicPort}"
 }
 
 trait AddrOrdering {
   implicit val order: Order[Addr] = new Order[Addr] {
     override def compare(x: Addr, y: Addr): Int =
       x.host.toString.compareTo(y.host.toString) match {
-        case 0 => x.port.compareTo(y.port)
+        case 0 => x.publicPort.compareTo(y.publicPort)
         case o => o
       }
   }
@@ -37,7 +35,7 @@ object Addr extends Codecs with AddrOrdering {
     Option(in.drop(addr.length + 1))
       .filter(_.nonEmpty)
       .map(_.toIntOption)
-      .getOrElse(Option(9001))
+      .getOrElse(Option(9000))
       .flatMap(
         port =>
           catching(classOf[UnknownHostException])

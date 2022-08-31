@@ -4,7 +4,7 @@ import java.net.InetAddress
 
 import constellation.util.testing.FakeNode
 import org.constellation.NetworkLoadbalancer
-import org.constellation.primitives.node.{Addr, ErrorBody, Id, Info, NodeState, Reputation}
+import org.constellation.primitives.node.{Addr, ErrorBody, Id, Info, NodeState}
 import org.scalatest.{BeforeAndAfterAll, FunSpec, Matchers}
 import cats.data.NonEmptyList
 import cats.effect.Timer
@@ -24,6 +24,7 @@ import org.http4s.{Header, Headers, Request, Status}
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import org.http4s.circe.CirceEntityCodec._
+import java.util.UUID
 
 class IntegrationSpec extends FunSpec with Matchers with BeforeAndAfterAll {
 
@@ -33,15 +34,15 @@ class IntegrationSpec extends FunSpec with Matchers with BeforeAndAfterAll {
   val httpClient = BlazeClientBuilder[IO](scala.concurrent.ExecutionContext.global).resource
 
   val fakeSetup = NonEmptyList.of(
-    Info(Id("node-1"), Addr(InetAddress.getLoopbackAddress, 9997), NodeState.Ready, Reputation(1), "node-1"),
-    Info(Id("node-2"), Addr(InetAddress.getLoopbackAddress, 9999), NodeState.Ready, Reputation(1), "node-2")
+    Info(Id("node-1"), InetAddress.getLoopbackAddress, 9997, 9998, UUID.fromString("bb6a5521-c565-4179-b4f1-4a3be905c496"), NodeState.Ready),
+    Info(Id("node-2"), InetAddress.getLoopbackAddress, 9999, 10000, UUID.fromString("1f2b4231-0e45-43ee-ae87-b7e5caaa3159"), NodeState.Ready)
   )
 
-  val clusterInit = fakeSetup.map(i => s"localhost:${i.ip.port}").toList
+  val clusterInit = fakeSetup.map(i => s"localhost:${i.publicPort}").toList
 
   val nodes =
     fakeSetup
-      .map(i => new FakeNode(i.ip.publicPort, i.ip.port, fakeSetup.toList, Json.obj("node-id" -> i.id.hex.asJson)))
+      .map(i => new FakeNode(i.publicPort, i.p2pPort, fakeSetup.toList, Json.obj("node-id" -> i.id.hex.asJson)))
       .map(_.run)
       .parSequence
       .flatMap(_ => IO.unit)
@@ -70,19 +71,10 @@ class IntegrationSpec extends FunSpec with Matchers with BeforeAndAfterAll {
 
     def enableMaintenance: IO[Unit] =
       httpClient.use {
-        _.expect[Unit](Request[IO](method = POST, uri = uri("http://localhost:9001/settings/maintenance")))
-      }
+        _.successful(Request[IO](method = POST, uri = uri("http://localhost:8889/settings/maintenance")))
+      }.void
 
     checkWhileReady.unsafeRunSync()
-
-    it("Returns 503 when maintenance mode enabled") {
-      enableMaintenance.unsafeRunSync
-      val result = httpClient.use {
-        _.status(Request[IO](method = POST, uri = uri("http://localhost:9000/dashboard")))
-      }.unsafeRunSync
-
-      result should equal(Status.ServiceUnavailable)
-    }
 
     it("Subsequent requests should come from the same node (aka sticky sessions)") {
 
@@ -107,6 +99,15 @@ class IntegrationSpec extends FunSpec with Matchers with BeforeAndAfterAll {
           )(jsonOf[IO, Json])
         )
         .unsafeRunSync should not equal (result)
+    }
+
+    it("Returns 503 when maintenance mode enabled") {
+      enableMaintenance.unsafeRunSync
+      val result = httpClient.use {
+        _.status(Request[IO](method = GET, uri = uri("http://localhost:9000/dashboard")))
+      }.unsafeRunSync
+
+      result should equal(Status.ServiceUnavailable)
     }
   }
 }
