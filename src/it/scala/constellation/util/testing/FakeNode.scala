@@ -10,7 +10,7 @@ import org.http4s.dsl.io._
 import org.http4s.server.blaze.BlazeBuilder
 import cats.implicits._
 import com.sun.org.apache.xalan.internal.lib.NodeInfo
-import org.constellation.primitives.node.{Addr, Codecs, Id, Info, NodeState, Reputation}
+import org.constellation.primitives.node.{Addr, Codecs, Id, Info, NodeState}
 import io.circe.generic.auto._
 import io.circe.Json
 import io.circe.Json.JArray
