@@ -2,7 +2,7 @@ import com.typesafe.sbt.packager.docker._
 
 name := "cl-lb"
 
-version := "0.1.7"
+version := "0.2.0"
 
 scalaVersion := "2.13.1"
 
@@ -65,6 +65,8 @@ packageName in Docker := "constellationprotocol/load-balancer"
 dockerBaseImage := "openjdk:12-alpine"
 
 dockerExposedPorts := Seq(9000)
+
+dockerBuildOptions := Seq("--force-rm", "--platform", "linux/amd64", "-t", dockerAlias.value.toString)
 
 dockerCommands ++= Seq(
   Cmd("USER", "root"),
