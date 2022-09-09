@@ -9,10 +9,15 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
-data "template_file" "cl_lb_app" {
-  template = file("templates/cl_lb_app.json.tpl")
-
-  vars = {
+resource "aws_ecs_task_definition" "app" {
+  family                   = "cl-lb_app-task_${var.env}"
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.fargate_cpu
+  memory                   = var.fargate_memory
+  container_definitions    = templatefile("templates/cl_lb_app.json.tpl", {
     app_image      = var.app_image
     app_port       = var.app_port
     settings_port  = var.settings_port
@@ -22,18 +27,7 @@ data "template_file" "cl_lb_app" {
     fargate_memory = var.fargate_memory
     aws_region     = var.aws_region
     env            = var.env
-  }
-}
-
-resource "aws_ecs_task_definition" "app" {
-  family                   = "cl-lb_app-task_${var.env}"
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = var.fargate_cpu
-  memory                   = var.fargate_memory
-  container_definitions    = data.template_file.cl_lb_app.rendered
+  })
 }
 
 resource "aws_ecs_service" "main" {
