@@ -17,7 +17,7 @@ class SessionCache {
   private val clientUpstreamCache = GuavaCache[Addr](CacheConfig())
 
   def memoizeUpstream(req: Request[IO], addr: Addr): IO[Unit] =
-    clientId(req).map(clientUpstreamCache.doPut(_, addr, Some(1 hour)).flatMap(_ => IO.unit)).getOrElse(IO.unit)
+    clientId(req).map(clientUpstreamCache.doPut(_, addr, Some(10 minutes)).flatMap(_ => IO.unit)).getOrElse(IO.unit)
 
   def resolveUpstream(req: Request[IO], validHosts: List[Addr]): IO[Option[Addr]] = //TODO: HashSet wold be faster
     clientId(req)
