@@ -1,4 +1,4 @@
-/target
+target
 /project/target
 /project/project/target
 *.tfstate
@@ -7,3 +7,8 @@
 .idea/
 *.terraform/
 *.tfvars
+.bloop
+.metals
+metals.sbt
+.vscode
+

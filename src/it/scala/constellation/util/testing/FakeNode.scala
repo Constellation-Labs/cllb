@@ -31,7 +31,7 @@ class FakeNode(publicApiPort: Int, peerApiPort: Int, peers: List[Info], publicRe
   private val clusterInfo = peers.asJson
 
   private val publicService = HttpRoutes.of[IO] {
-    case GET -> Root / "cluster" / "info" => Ok(clusterInfo)
+    case GET -> Root / "consensus" / "info" => Ok(clusterInfo)
     case GET -> Root / "dashboard" => Ok(publicResult)
   }
 

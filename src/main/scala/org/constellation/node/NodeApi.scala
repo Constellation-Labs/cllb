@@ -23,7 +23,7 @@ class RestNodeApi(node: Addr, identity: Option[BasicCredentials])(implicit http:
   )
 
   private val getInfoRequest = Request[IO](
-    uri = baseUri.withPath("/cluster/info"),
+    uri = baseUri.withPath("/consensus/info"),
     headers = identity.map(creds => Headers.of(Authorization(creds))).getOrElse(Headers.empty)
   )
 
