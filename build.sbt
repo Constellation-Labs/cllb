@@ -2,7 +2,7 @@ import com.typesafe.sbt.packager.docker._
 
 name := "cl-lb"
 
-version := "0.2.0"
+version := "0.2.3"
 
 scalaVersion := "2.13.1"
 

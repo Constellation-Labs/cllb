@@ -12,7 +12,7 @@ class InfoSpec extends FunSpec with Matchers {
   describe("valid json object string") {
 
     val validJson =
-      """{"id":"8804651be951ea09a660124499e4f7878c3e0faf52c282b360156d39d6a2cefe916b35ba8452c8a9beed02ea25f83118270d4637449ac0905b1e333436f18b45","ip":"147.182.209.217","publicPort":9000,"p2pPort":9001,"session":"fea5d992-c83d-48e2-be81-4252e30d724e","state":"Ready"}"""
+      """{"id":"8804651be951ea09a660124499e4f7878c3e0faf52c282b360156d39d6a2cefe916b35ba8452c8a9beed02ea25f83118270d4637449ac0905b1e333436f18b45","ip":"147.182.209.217","publicPort":9000,"p2pPort":9001,"session":543234,"state":"Ready"}"""
 
     it("parses as an object") {
       decode[Info](validJson) shouldBe a[Right[_, _]]
@@ -22,7 +22,7 @@ class InfoSpec extends FunSpec with Matchers {
   describe("valid json array string") {
 
     val validJson =
-      """[{"id":"46daea11ca239cb8c0c8cdeb27db9dbe9c03744908a8a389a60d14df2ddde409260a93334d74957331eec1af323f458b12b3a6c3b8e05885608aae7e3a77eac7","ip":"54.177.146.221","publicPort":9000,"p2pPort":9001,"session":"78e4560c-3de0-4e60-b900-48240698a940","state":"Ready"},{"id":"25366a0db122b098fd551a7b2104970748dcdded84d06eba85dda558f01ecf5c5133d0d6554a30735cdd7eddd49b5942a29d2e93295d26cbf3deb8a1f73f5581","ip":"54.148.112.254","publicPort":9000,"p2pPort":9001,"session":"04ceff63-2a00-48c3-99a2-a22ac5fa36ca","state":"Ready"},{"id":"56ab39214bb79e9e60d1f9bd54bafa086e594a93830438631330e7f5144408611b0d21cc9e0c7039ac93f7a2dd1b70bcdee18b1eafa3756b90085b1208369cd5","ip":"143.198.104.221","publicPort":9000,"p2pPort":9001,"session":"16ae54a9-cb49-45e5-b772-8270302b1d49","state":"Ready"},{"id":"bb95a0c6f17b9a0cf8d6205a14735a6f5e6272a2f4385f8f57859ab76935b3dfd437bab917c60e9fc2e003ddf757675d0996407b4ea61b97058979cb8cff8c58","ip":"91.67.190.27","publicPort":9000,"p2pPort":9001,"session":"218cdb27-4dad-44de-8510-2beb25c52aa3","state":"Observing"}]"""
+      """[{"id":"46daea11ca239cb8c0c8cdeb27db9dbe9c03744908a8a389a60d14df2ddde409260a93334d74957331eec1af323f458b12b3a6c3b8e05885608aae7e3a77eac7","ip":"54.177.146.221","publicPort":9000,"p2pPort":9001,"session":123456,"state":"Ready"},{"id":"25366a0db122b098fd551a7b2104970748dcdded84d06eba85dda558f01ecf5c5133d0d6554a30735cdd7eddd49b5942a29d2e93295d26cbf3deb8a1f73f5581","ip":"54.148.112.254","publicPort":9000,"p2pPort":9001,"session":123456,"state":"Ready"},{"id":"56ab39214bb79e9e60d1f9bd54bafa086e594a93830438631330e7f5144408611b0d21cc9e0c7039ac93f7a2dd1b70bcdee18b1eafa3756b90085b1208369cd5","ip":"143.198.104.221","publicPort":9000,"p2pPort":9001,"session":1231231231,"state":"Ready"},{"id":"bb95a0c6f17b9a0cf8d6205a14735a6f5e6272a2f4385f8f57859ab76935b3dfd437bab917c60e9fc2e003ddf757675d0996407b4ea61b97058979cb8cff8c58","ip":"91.67.190.27","publicPort":9000,"p2pPort":9001,"session":12939123,"state":"Observing"}]"""
 
     it("parses as list of objects") {
       decode[List[Info]](validJson) shouldBe a[Right[_, _]]
