@@ -34,8 +34,8 @@ class IntegrationSpec extends FunSpec with Matchers with BeforeAndAfterAll {
   val httpClient = BlazeClientBuilder[IO](scala.concurrent.ExecutionContext.global).resource
 
   val fakeSetup = NonEmptyList.of(
-    Info(Id("node-1"), InetAddress.getLoopbackAddress, 9997, 9998, UUID.fromString("bb6a5521-c565-4179-b4f1-4a3be905c496"), NodeState.Ready),
-    Info(Id("node-2"), InetAddress.getLoopbackAddress, 9999, 10000, UUID.fromString("1f2b4231-0e45-43ee-ae87-b7e5caaa3159"), NodeState.Ready)
+    Info(Id("node-1"), InetAddress.getLoopbackAddress, 9997, 9998, 123L, NodeState.Ready),
+    Info(Id("node-2"), InetAddress.getLoopbackAddress, 9999, 10000, 456L, NodeState.Ready)
   )
 
   val clusterInit = fakeSetup.map(i => s"localhost:${i.publicPort}").toList
