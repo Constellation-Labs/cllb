@@ -59,8 +59,9 @@ variable "settings_port" {
   default     = 9001
 }
 
-variable "genesis_ip" {
-  description = "IP allowed to access settings"
+variable "node_ips" {
+  description = "IPs allowed to access settings"
+  type = set(string)
 }
 
 variable "fargate_cpu" {
