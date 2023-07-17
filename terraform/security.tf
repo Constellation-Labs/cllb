@@ -17,7 +17,7 @@ resource "aws_security_group" "lb" {
     protocol    = "tcp"
     from_port   = var.settings_port
     to_port     = var.settings_port
-    cidr_blocks = [var.genesis_ip]
+    cidr_blocks = var.node_ips
   }
 
   egress {
