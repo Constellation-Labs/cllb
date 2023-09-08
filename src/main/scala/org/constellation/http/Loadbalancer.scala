@@ -78,8 +78,13 @@ class Loadbalancer(port: Int = 9000, host: String = "localhost", retryAfterMinut
     case GET -> Root / "health" =>
       upstream.get
         .map(_.size)
-        .flatTap(size => logger.info(s"I understand Im healthy, my upstream size is now $size"))
-        .flatMap(size => Ok(s"$size"))
+        .flatTap(size => logger.info(s"Health check: my upstream size is $size"))
+        .flatMap { size =>
+          size match {
+            case 0 => InternalServerError()
+            case _ => Ok(s"$size")
+          }
+        }
     case GET -> Root / "health" / addrStr =>
       Addr
         .unapply(addrStr)
