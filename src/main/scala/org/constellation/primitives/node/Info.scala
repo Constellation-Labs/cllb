@@ -19,6 +19,7 @@ case class Info(
     ip: InetAddress,
     publicPort: Int,
     p2pPort: Int,
+    clusterSession: Long,
     session: Long,
     state: NodeState.State
 )

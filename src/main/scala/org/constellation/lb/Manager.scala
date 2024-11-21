@@ -1,8 +1,10 @@
 package org.constellation.lb
 
-import cats.data.{NonEmptyList, _}
+import cats.Applicative
+import cats.data._
 import cats.effect.concurrent.Ref
 import cats.effect.{ContextShift, ExitCode, IO, Timer}
+import cats.instances.long._
 import cats.syntax.all._
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
@@ -14,9 +16,11 @@ import org.http4s.HttpRoutes
 import org.http4s.client.Client
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.dsl.io._
-import org.http4s.server.blaze.BlazeBuilder
+import org.http4s.implicits.http4sKleisliResponseSyntaxOptionT
+import org.http4s.server.Router
+import org.http4s.server.blaze.BlazeServerBuilder
+import NemOListOps._
 
-import scala.collection.immutable.SortedSet
 import scala.concurrent.ExecutionContext.global
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -25,6 +29,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     implicit val C: ContextShift[IO],
     val t: Timer[IO]
 ) extends AddrOrdering {
+
   private val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
   private val underMaintenance: Ref[IO, Boolean] = Ref.unsafe(false)
@@ -38,48 +43,82 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
   private lazy val hostsRef =
     Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
 
+  private lazy val sessionRef = Ref.unsafe[IO, Option[Long]](None)
+
   def node(addr: Addr)(implicit http: Client[IO]) = new RestNodeApi(addr, config.networkCredentials)
 
   private val lb = new Loadbalancer(config.port, config.`if`, config.retryAfterMinutes)
 
   def reset: IO[Unit] =
-    hostsRef
-      .modify(_ => (init.map(addr => addr -> None).toNem, ()))
-      .flatTap(_ => logger.info(s"Hosts list has been reverted to initial state."))
+    logger.info("reset") >>
+      hostsRef
+        .modify(_ => (init.map(addr => addr -> None).toNem, ()))
+        .flatMap(_ => sessionRef.set(None))
+        .flatTap(_ => logger.info(s"Hosts list and cluster session has been reverted to initial state."))
 
   def updateLbSetup(hosts: Set[Addr]): IO[Unit] =
     IO(logger.info(s"Update lb setup with hosts=$hosts"))
       .flatMap(_ => lb.withUpstream(hosts))
       .flatMap(_ => IO.unit)
 
-  private def updateProcedure(implicit client: Client[IO]) =
+  private def toAddress(n: Info) = Addr(n.ip, n.publicPort)
+
+  private def updateProcedure(implicit client: Client[IO]) = {
     hostsRef.get
       .flatTap(hosts => logger.info(s"Init cluster discovery from ${hosts.keys}"))
-      .flatMap(
-        hosts =>
+      .flatMap {
+        case hosts =>
           getClusterInfo(hosts.keys)(client)
-            .flatMap(
-              currentStatus =>
-                NonEmptySet
-                  .fromSet(findNewHosts(currentStatus))
-                  .map(
-                    getClusterInfo(_)
-                      .map(newHostsStatus => currentStatus ++ newHostsStatus)
-                  )
-                  .getOrElse(IO.pure(currentStatus))
-            )
-            .flatMap(
-              status =>
-                buildClusterStatus(status).flatMap {
-                  case (activeHosts, inactiveHosts) =>
-                    val clusterHosts = (activeHosts ++ inactiveHosts) // TODO: Add Eviction of inactive hosts
-                      .filterNot(addr => status.contains(addr))
-                      .foldLeft(status)((acc, addr) => acc.add(addr, Option.empty[List[Info]]))
-
-                    hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
+            .flatMap { currentStatus =>
+              sessionRef.get
+                .flatMap {
+                  case oSession @ Some(_) => IO.pure(oSession)
+                  case None =>
+                    val session = findFirstElement(filterKeys(init.toNes, currentStatus)).map(_.clusterSession)
+                    sessionRef.set(session).as(session)
                 }
-            )
+                .flatMap { session =>
+                  session match {
+                    case Some(clusterSession) =>
+                      NonEmptySet
+                        .fromSet(extractNewKeys(currentStatus)(toAddress))
+                        .map(
+                          getClusterInfo(_)
+                            .map(newHostsStatus => currentStatus ++ newHostsStatus)
+                        )
+                        .getOrElse(IO.pure(currentStatus))
+                        .flatMap { currentNodes =>
+                          val (sameSessionNodes, otherSessionNodes) =
+                            splitByElementProp(rotateMap(currentNodes)(toAddress))(_.clusterSession === clusterSession)
+                          Applicative[IO].whenA(otherSessionNodes.nonEmpty) {
+                            logger.warn(
+                              s"Evicted nodes not in cluster session ${clusterSession}: ${otherSessionNodes.keySet} "
+                            )
+                          } >> {
+                            val entries = sameSessionNodes.toList.map { case (k, v) => (k, Option(v)) }
+                            IO.pure(NonEmptyList.fromListUnsafe(entries).toNem)
+                          }
+                        }
+                    case _ =>
+                      logger.warn(
+                        s"Undefined cluster session, node discovery skipped "
+                      ) >> IO.pure(currentStatus)
+                  }
+                }
+            }
+      }
+      .flatMap(
+        status =>
+          buildClusterStatus(status).flatMap {
+            case (activeHosts, inactiveHosts) =>
+              val clusterHosts = (activeHosts ++ inactiveHosts) // TODO: Add Eviction of inactive hosts
+                .filterNot(addr => status.contains(addr))
+                .foldLeft(status)((acc, addr) => acc.add(addr, Option.empty[List[Info]]))
+
+              hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
+          }
       )
+  }
 
   private def manager(implicit client: Client[IO]): IO[Unit] = {
     val procedure = isUnderMaintenance.ifM(
@@ -96,7 +135,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
 
     procedure
       .flatTap(_ => logger.info("Scheduling next cluster status update round."))
-      .flatMap(_ => IO.sleep(60 seconds))
+      .flatMap(_ => IO.sleep(config.clusterUpdateRoundDelay))
       .flatMap(_ => manager)
   }
 
@@ -151,14 +190,15 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       .flatMap(
         _ =>
           http.use(
-            _ =>
-              BlazeBuilder[IO]
+            _ => {
+              val httpApp = Router("/utils" -> utilsHealth, "/settings" -> settingsRoutes).orNotFound
+              BlazeServerBuilder[IO]
                 .bindHttp(config.settingsPort, config.`if`)
-                .mountService(utilsHealth, "/utils")
-                .mountService(settingsRoutes, "/settings")
+                .withHttpApp(httpApp)
                 .serve
                 .compile
                 .drain
+            }
           )
       )
 
@@ -169,15 +209,6 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       disableMaintenanceMode.flatMap(_ => Ok())
   }
 
-  def findNewHosts(clusterInfo: NonEmptyMap[Addr, Option[List[Info]]]): SortedSet[Addr] =
-    SortedSet[Addr]() ++ clusterInfo.toNel.foldLeft(List.empty[Addr])(
-      (acc, bcc) =>
-        bcc match {
-          case (_, Some(hosts: List[Info])) => acc ++ hosts.map(n => Addr(n.ip, n.publicPort)).filterNot(clusterInfo(_).isDefined)
-          case _                            => acc
-        }
-    )
-
   def buildClusterStatus(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[(Set[Addr], Set[Addr])] = {
     val tresholdLevel = init.keys.size / 2
 
@@ -185,13 +216,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
       init(addr).nonEmpty && proof.count(_.state == NodeState.Ready) > tresholdLevel
 
     IO {
-      val (active, other) = init.toNel
-        .collect {
-          case (_, Some(el)) => el
-        }
-        .flatten
-        .groupBy(n => Addr(n.ip, n.publicPort))
-        .toList
+      val (active, other) = rotateMap(init)(toAddress).toList
         .partition {
           case (addr: Addr, proof: List[Info]) => isActive(addr, proof)
         }
