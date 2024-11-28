@@ -21,6 +21,7 @@ import org.http4s.server.Router
 import org.http4s.server.blaze.BlazeServerBuilder
 import NemOListOps._
 
+import scala.collection.immutable.SortedMap
 import scala.concurrent.ExecutionContext.global
 import scala.concurrent.duration._
 import scala.language.postfixOps
@@ -41,7 +42,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     .resource
 
   private lazy val hostsRef =
-    Ref.unsafe[IO, NonEmptyMap[Addr, Option[List[Info]]]](init.map(addr => addr -> None).toNem)
+    Ref.unsafe[IO, NonEmptyMap[Addr, Option[NonEmptyList[Info]]]](init.map(addr => addr -> None).toNem)
 
   private lazy val sessionRef = Ref.unsafe[IO, Option[Long]](None)
 
@@ -94,10 +95,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
                             logger.warn(
                               s"Evicted nodes not in cluster session ${clusterSession}: ${otherSessionNodes.keySet} "
                             )
-                          } >> {
-                            val entries = sameSessionNodes.toList.map { case (k, v) => (k, Option(v)) }
-                            IO.pure(NonEmptyList.fromListUnsafe(entries).toNem)
-                          }
+                          } >> IO.pure(NonEmptyMap.fromMapUnsafe(SortedMap.from(sameSessionNodes)))
                         }
                     case _ =>
                       logger.warn(
@@ -113,7 +111,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
             case (activeHosts, inactiveHosts) =>
               val clusterHosts = (activeHosts ++ inactiveHosts) // TODO: Add Eviction of inactive hosts
                 .filterNot(addr => status.contains(addr))
-                .foldLeft(status)((acc, addr) => acc.add(addr, Option.empty[List[Info]]))
+                .foldLeft(status)((acc, addr) => acc.add(addr, None))
 
               hostsRef.set(clusterHosts).flatTap(_ => updateLbSetup(activeHosts))
           }
@@ -204,12 +202,12 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
 
   private val settingsRoutes = HttpRoutes.of[IO] {
     case POST -> Root / "maintenance" =>
-      enableMaintenanceMode.flatMap(_ => Ok())
+      enableMaintenanceMode >> Ok()
     case DELETE -> Root / "maintenance" =>
-      disableMaintenanceMode.flatMap(_ => Ok())
+      disableMaintenanceMode >> Ok()
   }
 
-  def buildClusterStatus(init: NonEmptyMap[Addr, Option[List[Info]]]): IO[(Set[Addr], Set[Addr])] = {
+  def buildClusterStatus(init: NonEmptyMap[Addr, Option[NonEmptyList[Info]]]): IO[(Set[Addr], Set[Addr])] = {
     val tresholdLevel = init.keys.size / 2
 
     def isActive(addr: Addr, proof: List[Info]) =
@@ -218,7 +216,8 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
     IO {
       val (active, other) = rotateMap(init)(toAddress).toList
         .partition {
-          case (addr: Addr, proof: List[Info]) => isActive(addr, proof)
+          case (addr, Some(proof)) => isActive(addr, proof.toList)
+          case _                   => false
         }
 
       active.map(_._1).toSet -> other.map(_._1).toSet
@@ -230,7 +229,7 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
 
   def getClusterInfo(
       hosts: NonEmptySet[Addr]
-  )(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[List[Info]]]] = {
+  )(implicit client: Client[IO]): IO[NonEmptyMap[Addr, Option[NonEmptyList[Info]]]] = {
     IO.apply(logger.info(s"Fetch cluster status from following ${hosts.size} hosts: ${hosts.toList.take(5)}"))
       .flatMap(
         _ =>
@@ -238,17 +237,21 @@ class Manager(init: NonEmptyList[Addr], config: LoadbalancerConfig)(
             .map(
               addr =>
                 node(addr).getInfo
-                  .flatMap(
-                    result =>
+                  .flatMap {
+                    case result @ x :: xs =>
                       logger
                         .debug(s"Node $addr returned $result")
-                        .map(_ => addr -> Option(result))
-                  )
+                        .map(_ => addr -> Some(NonEmptyList(x, xs)))
+                    case Nil =>
+                      logger
+                        .warn(s"Node $addr returned empty node list")
+                        .map(_ => addr -> None)
+                  }
                   .recoverWith {
                     case error =>
                       logger
                         .info(s"Cannot retrieve cluster info from addr=$addr error=$error")
-                        .map(_ => addr -> Option.empty[List[Info]])
+                        .map(_ => addr -> None)
                   }
             )
             .parSequence
