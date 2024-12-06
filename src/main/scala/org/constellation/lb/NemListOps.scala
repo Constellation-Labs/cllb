@@ -4,37 +4,35 @@ import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
 
 import scala.collection.immutable.{SortedMap, SortedSet}
 
-object NemOListOps {
+object NemListOps {
 
   /**
     * Extract new keys from the map entries
-    * @param nem map of option lists
+    * @param nem map of lists
     * @param v2k value to key
     * @tparam K
     * @tparam V
     * @return new keys
     */
-  def extractNewKeys[K: Ordering, V](nem: NonEmptyMap[K, Option[NonEmptyList[V]]])(v2k: V => K): SortedSet[K] =
+  def extractNewKeys[K: Ordering, V](nem: NonEmptyMap[K, List[V]])(v2k: V => K): SortedSet[K] =
     nem.toNel.foldLeft(SortedSet.empty[K])(
       (acc, bcc) =>
         bcc match {
-          case (_, Some(hosts)) => acc ++ hosts.map(v2k).filterNot(nem(_).isDefined)
-          case _                => acc
+          case (_, hosts) => acc ++ hosts.map(v2k).filterNot(nem(_).isDefined)
+          case _          => acc
         }
     )
 
   /**
     * Split a map of entries into two maps: one with the entries where all elements of the list satisfy a property and one when not
-    * @param map map of option lists
+    * @param map map of lists
     * @param prop property that all elements of the list must satisfy
     * @tparam K
     * @tparam V
     * @return (map of elements that satisfy the property, map of elements that don't)
     */
-  def splitByElementProp[K, V](
-      map: Map[K, Option[NonEmptyList[V]]]
-  )(prop: V => Boolean): (Map[K, Option[NonEmptyList[V]]], Map[K, Option[NonEmptyList[V]]]) =
-    map.partition { case (_, v) => v.exists(_.forall(prop)) }
+  def splitByElementProp[K, V](map: Map[K, List[V]])(prop: V => Boolean): (Map[K, List[V]], Map[K, List[V]]) =
+    map.partition { case (_, v) => v.forall(prop) }
 
   /**
     * Finds the first element of the lists in the map that satisfies a property
@@ -43,8 +41,8 @@ object NemOListOps {
     * @tparam V
     * @return first element wrapped in Some if found or None
     */
-  def findFirstElement[K, V](map: Map[K, Option[NonEmptyList[V]]]): Option[V] = {
-    map.collectFirst { case (_, Some(e)) => e.head }
+  def findFirstElement[K, V](map: Map[K, List[V]]): Option[V] = {
+    map.collectFirst { case (_, e :: _) => e }
   }
 
   /**
@@ -61,20 +59,19 @@ object NemOListOps {
 
   /**
     * "matrix-like" rotation of the map, creating a new map based regrouping by the keys extracted from the entry lists.
-    * @param map map of option lists
+    * @param map map of lists
     * @param v2k value to key
     * @tparam K
     * @tparam V
     * @return map with lists from entries.
     */
-  def rotateMap[K, V](map: NonEmptyMap[K, Option[NonEmptyList[V]]])(v2k: V => K): Map[K, Option[NonEmptyList[V]]] =
+  def rotateMap[K, V](map: NonEmptyMap[K, List[V]])(v2k: V => K): Map[K, List[V]] =
     map.toNel
       .collect {
-        case (_, Some(el)) => el.toList
+        case (_, el) => el
       }
       .flatten
       .groupBy(v2k)
-      .map { case (k, vs) => k -> list2oNel(vs) }
 
   /**
     * Convert a option non empty list to list
